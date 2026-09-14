@@ -1,9 +1,11 @@
 import os
 import threading
+import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psycopg
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -289,10 +291,18 @@ def get_content_message_id(content_id):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    print("START COMMAND RECEIVED")
+
     user = update.effective_user
 
     if not user:
+        print("START ERROR: No effective user")
         return
+
+    print(
+        f"START FROM USER: {user.id} "
+        f"@{user.username or 'no_username'}"
+    )
 
     # ذخیره کاربر
     save_user(
@@ -306,6 +316,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         referral_code = context.args[0]
 
+        print(
+            f"REFERRAL CODE RECEIVED: {referral_code}"
+        )
+
         if referral_code.startswith("ref_"):
 
             try:
@@ -314,7 +328,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     referral_code.replace("ref_", "", 1)
                 )
 
-                # ثبت دعوت
                 added = add_referral(
                     inviter_id,
                     user.id
@@ -382,6 +395,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     )
 
+    print("START RESPONSE SENT")
+
 
 # =========================
 # Movie Section
@@ -391,9 +406,16 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
 
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        print("Old/invalid callback query in movies:", e)
 
     user_id = query.from_user.id
+
+    print(
+        f"MOVIES BUTTON CLICKED BY USER: {user_id}"
+    )
 
     user = get_user(user_id)
 
@@ -401,10 +423,6 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     verified = user[2]
-
-    # =========================
-    # کاربر تایید شده
-    # =========================
 
     if verified:
 
@@ -441,16 +459,11 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # =========================
-    # ساخت لینک جدید دعوت به ربات
-    # =========================
-
     invite_link = (
         f"https://t.me/{BOT_USERNAME}"
         f"?start=ref_{user_id}"
     )
 
-    # ذخیره لینک جدید
     set_invite_link(
         user_id,
         invite_link
@@ -505,7 +518,10 @@ async def invite_friends(
 
     query = update.callback_query
 
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        print("Old/invalid callback query in invite:", e)
 
     user_id = query.from_user.id
 
@@ -514,7 +530,6 @@ async def invite_friends(
     if not user:
         return
 
-    # همیشه لینک جدید ربات ساخته می‌شود
     invite_link = (
         f"https://t.me/{BOT_USERNAME}"
         f"?start=ref_{user_id}"
@@ -540,7 +555,7 @@ async def invite_friends(
 
         "📌 این لینک را برای دوستانتان ارسال کنید.\n"
         "دوست شما باید از طریق همین لینک وارد ربات شود "
-        "و Start را بزند تا دعوت ثبت شود.",
+        "و Start را بزند تا دعوت ثبت شود."
 
     )
 
@@ -556,7 +571,10 @@ async def check_referrals(
 
     query = update.callback_query
 
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        print("Old/invalid callback query in check:", e)
 
     user_id = query.from_user.id
 
@@ -609,7 +627,10 @@ async def send_content(
 
     query = update.callback_query
 
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        print("Old/invalid callback query in content:", e)
 
     user_id = query.from_user.id
 
@@ -712,6 +733,28 @@ async def channel_post(
 
 
 # =========================
+# Error Handler
+# =========================
+
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    print("========== BOT ERROR ==========")
+    print("Update:", update)
+    print("Error:", context.error)
+
+    traceback.print_exception(
+        type(context.error),
+        context.error,
+        context.error.__traceback__
+    )
+
+    print("================================")
+
+
+# =========================
 # Main
 # =========================
 
@@ -727,23 +770,25 @@ def main():
             "DATABASE_URL is not set"
         )
 
-    # ساخت جدول‌ها
+    print("Initializing database...")
+
     init_database()
 
-    # وب‌سرور Render
+    print("Database initialized.")
+
     threading.Thread(
         target=start_web_server,
         daemon=True
     ).start()
 
-    # ربات
+    print("Render health server started.")
+
     app = (
         Application.builder()
         .token(TOKEN)
         .build()
     )
 
-    # /start
     app.add_handler(
         CommandHandler(
             "start",
@@ -751,7 +796,6 @@ def main():
         )
     )
 
-    # فیلم و سریال
     app.add_handler(
         CallbackQueryHandler(
             movies,
@@ -759,7 +803,6 @@ def main():
         )
     )
 
-    # دعوت دوستان
     app.add_handler(
         CallbackQueryHandler(
             invite_friends,
@@ -767,7 +810,6 @@ def main():
         )
     )
 
-    # بررسی دعوت‌ها
     app.add_handler(
         CallbackQueryHandler(
             check_referrals,
@@ -775,7 +817,6 @@ def main():
         )
     )
 
-    # دریافت محتوا
     app.add_handler(
         CallbackQueryHandler(
             send_content,
@@ -783,7 +824,6 @@ def main():
         )
     )
 
-    # ثبت پست‌های جدید کانال
     app.add_handler(
         MessageHandler(
             filters.Chat(CONTENT_CHANNEL_ID)
@@ -792,11 +832,16 @@ def main():
         )
     )
 
-    print(
-        "MediaPlus Bot started..."
+    app.add_error_handler(
+        error_handler
     )
 
-    app.run_polling()
+    print("MediaPlus Bot started...")
+    print("Starting Telegram polling...")
+
+    app.run_polling(
+        drop_pending_updates=False
+    )
 
 
 if __name__ == "__main__":
