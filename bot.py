@@ -8,7 +8,6 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
-    ChatMemberHandler,
     MessageHandler,
     ContextTypes,
     filters,
@@ -21,12 +20,16 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # کانال خصوصی محتوای MediaPlus
 CONTENT_CHANNEL_ID = -1004485551897
 
+# نام ربات
+BOT_USERNAME = "Mediapluscenterbot"
+
 
 # =========================
 # Render Health Server
 # =========================
 
 class HealthHandler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
@@ -51,6 +54,7 @@ def db_connection():
 
 
 def init_database():
+
     with db_connection() as conn:
         with conn.cursor() as cur:
 
@@ -87,58 +91,75 @@ def init_database():
 
 
 def save_user(user_id, username, first_name):
+
     with db_connection() as conn:
         with conn.cursor() as cur:
+
             cur.execute("""
-                INSERT INTO users (user_id, username, first_name)
+                INSERT INTO users (
+                    user_id,
+                    username,
+                    first_name
+                )
                 VALUES (%s, %s, %s)
+
                 ON CONFLICT (user_id)
                 DO UPDATE SET
                     username = EXCLUDED.username,
                     first_name = EXCLUDED.first_name
-            """, (user_id, username, first_name))
+            """, (
+                user_id,
+                username,
+                first_name
+            ))
 
         conn.commit()
 
 
 def get_user(user_id):
+
     with db_connection() as conn:
         with conn.cursor() as cur:
+
             cur.execute("""
-                SELECT user_id, invite_link, verified
+                SELECT
+                    user_id,
+                    invite_link,
+                    verified
                 FROM users
                 WHERE user_id = %s
             """, (user_id,))
+
             return cur.fetchone()
 
 
 def set_invite_link(user_id, invite_link):
+
     with db_connection() as conn:
         with conn.cursor() as cur:
+
             cur.execute("""
                 UPDATE users
                 SET invite_link = %s
                 WHERE user_id = %s
-            """, (invite_link, user_id))
+            """, (
+                invite_link,
+                user_id
+            ))
+
         conn.commit()
 
 
-def get_inviter_by_link(invite_link):
-    with db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT user_id
-                FROM users
-                WHERE invite_link = %s
-            """, (invite_link,))
-            row = cur.fetchone()
-            return row[0] if row else None
-
-
 def add_referral(inviter_id, referred_id):
+
+    # جلوگیری از دعوت خود شخص
+    if inviter_id == referred_id:
+        return False
+
     with db_connection() as conn:
         with conn.cursor() as cur:
 
+            # آیا این شخص قبلاً توسط شخص دیگری دعوت شده؟
             cur.execute("""
                 SELECT 1
                 FROM referrals
@@ -148,11 +169,29 @@ def add_referral(inviter_id, referred_id):
             if cur.fetchone():
                 return False
 
+            # آیا دعوت‌کننده وجود دارد؟
             cur.execute("""
-                INSERT INTO referrals (inviter_id, referred_id)
-                VALUES (%s, %s)
-            """, (inviter_id, referred_id))
+                SELECT 1
+                FROM users
+                WHERE user_id = %s
+            """, (inviter_id,))
 
+            if not cur.fetchone():
+                return False
+
+            # ثبت دعوت
+            cur.execute("""
+                INSERT INTO referrals (
+                    inviter_id,
+                    referred_id
+                )
+                VALUES (%s, %s)
+            """, (
+                inviter_id,
+                referred_id
+            ))
+
+            # تعداد دعوت‌ها
             cur.execute("""
                 SELECT COUNT(*)
                 FROM referrals
@@ -161,7 +200,9 @@ def add_referral(inviter_id, referred_id):
 
             count = cur.fetchone()[0]
 
+            # فعال کردن دسترسی بعد از 5 دعوت
             if count >= 5:
+
                 cur.execute("""
                     UPDATE users
                     SET verified = TRUE
@@ -174,65 +215,154 @@ def add_referral(inviter_id, referred_id):
 
 
 def get_referral_count(user_id):
+
     with db_connection() as conn:
         with conn.cursor() as cur:
+
             cur.execute("""
                 SELECT COUNT(*)
                 FROM referrals
                 WHERE inviter_id = %s
             """, (user_id,))
+
             return cur.fetchone()[0]
 
 
 def save_content(message_id, title):
+
     with db_connection() as conn:
         with conn.cursor() as cur:
+
             cur.execute("""
-                INSERT INTO contents (message_id, title)
+                INSERT INTO contents (
+                    message_id,
+                    title
+                )
                 VALUES (%s, %s)
-                ON CONFLICT (message_id) DO NOTHING
-            """, (message_id, title))
+
+                ON CONFLICT (message_id)
+                DO NOTHING
+            """, (
+                message_id,
+                title
+            ))
 
         conn.commit()
 
 
 def get_contents():
+
     with db_connection() as conn:
         with conn.cursor() as cur:
+
             cur.execute("""
-                SELECT id, message_id, title
+                SELECT
+                    id,
+                    message_id,
+                    title
                 FROM contents
                 ORDER BY id DESC
                 LIMIT 50
             """)
+
             return cur.fetchall()
 
 
 def get_content_message_id(content_id):
+
     with db_connection() as conn:
         with conn.cursor() as cur:
+
             cur.execute("""
                 SELECT message_id
                 FROM contents
                 WHERE id = %s
             """, (content_id,))
+
             row = cur.fetchone()
+
             return row[0] if row else None
 
 
 # =========================
-# Start
+# Start + Referral
 # =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
+    if not user:
+        return
+
+    # ذخیره کاربر
     save_user(
         user.id,
         user.username,
         user.first_name
     )
+
+    # بررسی لینک دعوت
+    if context.args:
+
+        referral_code = context.args[0]
+
+        if referral_code.startswith("ref_"):
+
+            try:
+
+                inviter_id = int(
+                    referral_code.replace("ref_", "", 1)
+                )
+
+                # ثبت دعوت
+                added = add_referral(
+                    inviter_id,
+                    user.id
+                )
+
+                if added:
+
+                    count = get_referral_count(
+                        inviter_id
+                    )
+
+                    try:
+
+                        if count >= 5:
+
+                            await context.bot.send_message(
+                                chat_id=inviter_id,
+                                text=(
+                                    "🎉 تبریک!\n\n"
+                                    "۵ دعوت موفق شما تکمیل شد.\n"
+                                    "✅ دسترسی شما به بخش فیلم و سریال فعال شد."
+                                )
+                            )
+
+                        else:
+
+                            await context.bot.send_message(
+                                chat_id=inviter_id,
+                                text=(
+                                    "✅ یک دعوت موفق ثبت شد.\n\n"
+                                    f"👥 دعوت‌های موفق شما: {count} از 5"
+                                )
+                            )
+
+                    except Exception as e:
+
+                        print(
+                            "Referral notification error:",
+                            e
+                        )
+
+            except ValueError:
+
+                print(
+                    "Invalid referral code:",
+                    referral_code
+                )
 
     keyboard = [
         [
@@ -244,9 +374,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
+
         "🎬 به MediaPlus خوش آمدید\n\n"
         "برای ورود به بخش فیلم و سریال روی دکمه زیر بزنید:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
     )
 
 
@@ -257,9 +391,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
+
     await query.answer()
 
     user_id = query.from_user.id
+
     user = get_user(user_id)
 
     if not user:
@@ -267,21 +403,27 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     verified = user[2]
 
-    # اگر کاربر 5 نفر دعوت کرده باشد
+    # =========================
+    # کاربر تایید شده
+    # =========================
+
     if verified:
 
         contents = get_contents()
 
         if not contents:
+
             await query.message.reply_text(
                 "🎬 بخش فیلم و سریال\n\n"
                 "هنوز محتوایی اضافه نشده است."
             )
+
             return
 
         keyboard = []
 
         for content_id, message_id, title in contents:
+
             keyboard.append([
                 InlineKeyboardButton(
                     f"🎬 {title}",
@@ -290,49 +432,176 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
 
         await query.message.reply_text(
+
             "🎬 فیلم و سریال‌های موجود:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+
+            reply_markup=InlineKeyboardMarkup(
+                keyboard
+            )
         )
 
         return
 
-    # ساخت لینک اختصاصی دعوت
+    # =========================
+    # ساخت لینک دعوت به ربات
+    # =========================
+
     invite_link = user[1]
 
     if not invite_link:
 
-        try:
-            invite = await context.bot.create_chat_invite_link(
-                chat_id=CONTENT_CHANNEL_ID,
-                name=f"ref_{user_id}"
+        invite_link = (
+            f"https://t.me/{BOT_USERNAME}"
+            f"?start=ref_{user_id}"
+        )
+
+        set_invite_link(
+            user_id,
+            invite_link
+        )
+
+    count = get_referral_count(
+        user_id
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "👥 دعوت دوستان",
+                callback_data="invite"
             )
-
-            invite_link = invite.invite_link
-
-            set_invite_link(
-                user_id,
-                invite_link
+        ],
+        [
+            InlineKeyboardButton(
+                "🔍 بررسی دعوت‌ها",
+                callback_data="check_referrals"
             )
-
-        except Exception as e:
-
-            await query.message.reply_text(
-                "❌ در ساخت لینک دعوت مشکلی پیش آمد.\n\n"
-                "لطفاً کمی بعد دوباره تلاش کنید."
-            )
-
-            print("Invite link error:", e)
-            return
-
-    count = get_referral_count(user_id)
+        ]
+    ]
 
     await query.message.reply_text(
-        "🎬 برای فعال شدن دسترسی فیلم و سریال، "
-        "باید ۵ نفر را دعوت کنید.\n\n"
-        f"👥 دعوت موفق شما: {count} از 5\n\n"
-        "لینک اختصاصی دعوت شما:\n"
+
+        "🔐 دسترسی فیلم و سریال فعال نیست.\n\n"
+
+        "برای فعال شدن دسترسی، باید "
+        "۵ نفر را از طریق لینک اختصاصی خودتان "
+        "وارد ربات کنید.\n\n"
+
+        f"👥 دعوت‌های موفق: {count} از 5\n\n"
+
+        "بعد از تکمیل ۵ دعوت، بخش فیلم و سریال "
+        "برای شما فعال می‌شود.",
+
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
+
+# =========================
+# Invite Button
+# =========================
+
+async def invite_friends(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    user = get_user(user_id)
+
+    if not user:
+        return
+
+    invite_link = user[1]
+
+    if not invite_link:
+
+        invite_link = (
+            f"https://t.me/{BOT_USERNAME}"
+            f"?start=ref_{user_id}"
+        )
+
+        set_invite_link(
+            user_id,
+            invite_link
+        )
+
+    count = get_referral_count(
+        user_id
+    )
+
+    await query.message.reply_text(
+
+        "👥 دعوت دوستان\n\n"
+
+        f"تعداد دعوت‌های موفق شما: {count} از 5\n\n"
+
+        "لینک اختصاصی شما:\n"
         f"{invite_link}\n\n"
-        "این لینک را برای دوستانتان ارسال کنید."
+
+        "📌 این لینک را برای دوستانتان ارسال کنید.\n"
+        "دوست شما باید از طریق همین لینک وارد ربات شود "
+        "و Start را بزند تا دعوت ثبت شود.",
+
+    )
+
+
+# =========================
+# Check Referrals
+# =========================
+
+async def check_referrals(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    user = get_user(user_id)
+
+    if not user:
+        return
+
+    verified = user[2]
+
+    count = get_referral_count(
+        user_id
+    )
+
+    if verified:
+
+        await query.message.reply_text(
+
+            "🎉 دسترسی شما فعال است!\n\n"
+            f"👥 دعوت‌های موفق: {count} از 5\n\n"
+            "✅ اکنون می‌توانید فیلم و سریال‌ها را دریافت کنید."
+
+        )
+
+        return
+
+    remaining = 5 - count
+
+    await query.message.reply_text(
+
+        "📊 وضعیت دعوت‌ها\n\n"
+
+        f"👥 دعوت‌های موفق: {count} از 5\n"
+        f"⏳ تعداد باقی‌مانده: {remaining}\n\n"
+
+        "بعد از تکمیل ۵ دعوت، "
+        "دسترسی فیلم و سریال فعال می‌شود."
+
     )
 
 
@@ -340,9 +609,13 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Content Button
 # =========================
 
-async def send_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_content(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     query = update.callback_query
+
     await query.answer()
 
     user_id = query.from_user.id
@@ -352,34 +625,51 @@ async def send_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not user[2]:
 
         await query.message.reply_text(
+
             "🔒 دسترسی شما هنوز فعال نشده است.\n\n"
             "ابتدا باید ۵ نفر را دعوت کنید."
+
         )
 
         return
 
     try:
+
         content_id = int(
-            query.data.replace("content_", "")
+            query.data.replace(
+                "content_",
+                ""
+            )
         )
 
-        message_id = get_content_message_id(content_id)
+        message_id = get_content_message_id(
+            content_id
+        )
 
         if not message_id:
+
             await query.message.reply_text(
                 "❌ این محتوا پیدا نشد."
             )
+
             return
 
         await context.bot.copy_message(
+
             chat_id=user_id,
+
             from_chat_id=CONTENT_CHANNEL_ID,
+
             message_id=message_id
+
         )
 
     except Exception as e:
 
-        print("Content error:", e)
+        print(
+            "Content error:",
+            e
+        )
 
         await query.message.reply_text(
             "❌ ارسال محتوا با مشکل مواجه شد."
@@ -390,7 +680,10 @@ async def send_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Channel New Content
 # =========================
 
-async def channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def channel_post(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     message = update.channel_post
 
@@ -403,10 +696,16 @@ async def channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     title = "محتوای جدید"
 
     if message.caption:
-        title = message.caption.split("\n")[0][:80]
+
+        title = message.caption.split(
+            "\n"
+        )[0][:80]
 
     elif message.text:
-        title = message.text.split("\n")[0][:80]
+
+        title = message.text.split(
+            "\n"
+        )[0][:80]
 
     save_content(
         message.message_id,
@@ -414,85 +713,9 @@ async def channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     print(
-        f"New content saved: {message.message_id} - {title}"
+        f"New content saved: "
+        f"{message.message_id} - {title}"
     )
-
-
-# =========================
-# Referral Tracking
-# =========================
-
-async def member_joined(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    chat_member = update.chat_member
-
-    if not chat_member:
-        return
-
-    if chat_member.chat.id != CONTENT_CHANNEL_ID:
-        return
-
-    new_status = chat_member.new_chat_member.status
-
-    if new_status not in ("member", "administrator"):
-        return
-
-    invite_link = chat_member.invite_link
-
-    if not invite_link:
-        return
-
-    referred_user_id = chat_member.from_user.id
-
-    inviter_id = get_inviter_by_link(
-        invite_link.invite_link
-    )
-
-    if not inviter_id:
-        return
-
-    # کسی نمی‌تواند خودش را دعوت کند
-    if inviter_id == referred_user_id:
-        return
-
-    added = add_referral(
-        inviter_id,
-        referred_user_id
-    )
-
-    if not added:
-        return
-
-    count = get_referral_count(inviter_id)
-
-    try:
-
-        if count >= 5:
-
-            await context.bot.send_message(
-                chat_id=inviter_id,
-                text=(
-                    "🎉 تبریک!\n\n"
-                    "۵ دعوت موفق شما تکمیل شد.\n"
-                    "✅ دسترسی شما به بخش فیلم و سریال فعال شد."
-                )
-            )
-
-        else:
-
-            await context.bot.send_message(
-                chat_id=inviter_id,
-                text=(
-                    "✅ یک دعوت موفق ثبت شد.\n\n"
-                    f"👥 تعداد دعوت‌های شما: {count} از 5"
-                )
-            )
-
-    except Exception as e:
-        print("Referral notification error:", e)
 
 
 # =========================
@@ -502,10 +725,14 @@ async def member_joined(
 def main():
 
     if not TOKEN:
-        raise RuntimeError("BOT_TOKEN is not set")
+        raise RuntimeError(
+            "BOT_TOKEN is not set"
+        )
 
     if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL is not set")
+        raise RuntimeError(
+            "DATABASE_URL is not set"
+        )
 
     # ساخت جدول‌ها
     init_database()
@@ -523,10 +750,15 @@ def main():
         .build()
     )
 
+    # /start
     app.add_handler(
-        CommandHandler("start", start)
+        CommandHandler(
+            "start",
+            start
+        )
     )
 
+    # فیلم و سریال
     app.add_handler(
         CallbackQueryHandler(
             movies,
@@ -534,18 +766,27 @@ def main():
         )
     )
 
+    # دعوت دوستان
+    app.add_handler(
+        CallbackQueryHandler(
+            invite_friends,
+            pattern="^invite$"
+        )
+    )
+
+    # بررسی دعوت‌ها
+    app.add_handler(
+        CallbackQueryHandler(
+            check_referrals,
+            pattern="^check_referrals$"
+        )
+    )
+
+    # دریافت محتوا
     app.add_handler(
         CallbackQueryHandler(
             send_content,
             pattern="^content_[0-9]+$"
-        )
-    )
-
-    # ورود اعضای جدید به کانال
-    app.add_handler(
-        ChatMemberHandler(
-            member_joined,
-            ChatMemberHandler.CHAT_MEMBER
         )
     )
 
@@ -558,7 +799,9 @@ def main():
         )
     )
 
-    print("MediaPlus Bot started...")
+    print(
+        "MediaPlus Bot started..."
+    )
 
     app.run_polling()
 
