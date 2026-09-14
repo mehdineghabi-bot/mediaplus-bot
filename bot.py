@@ -1,3 +1,4 @@
+```python
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -12,7 +13,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-
 
 TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -443,22 +443,19 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # =========================
-    # ساخت لینک دعوت به ربات
+    # ساخت لینک جدید دعوت به ربات
     # =========================
 
-    invite_link = user[1]
+    invite_link = (
+        f"https://t.me/{BOT_USERNAME}"
+        f"?start=ref_{user_id}"
+    )
 
-    if not invite_link:
-
-        invite_link = (
-            f"https://t.me/{BOT_USERNAME}"
-            f"?start=ref_{user_id}"
-        )
-
-        set_invite_link(
-            user_id,
-            invite_link
-        )
+    # ذخیره لینک جدید
+    set_invite_link(
+        user_id,
+        invite_link
+    )
 
     count = get_referral_count(
         user_id
@@ -518,19 +515,16 @@ async def invite_friends(
     if not user:
         return
 
-    invite_link = user[1]
+    # همیشه لینک جدید ربات ساخته می‌شود
+    invite_link = (
+        f"https://t.me/{BOT_USERNAME}"
+        f"?start=ref_{user_id}"
+    )
 
-    if not invite_link:
-
-        invite_link = (
-            f"https://t.me/{BOT_USERNAME}"
-            f"?start=ref_{user_id}"
-        )
-
-        set_invite_link(
-            user_id,
-            invite_link
-        )
+    set_invite_link(
+        user_id,
+        invite_link
+    )
 
     count = get_referral_count(
         user_id
@@ -808,3 +802,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
