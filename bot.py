@@ -267,7 +267,16 @@ def get_referral_count(user_id):
             return cur.fetchone()[0]
 
 
-def save_content(message_id, title):
+def save_content(
+    message_id,
+    title,
+    poster_file_id=None,
+    year=None,
+    genre=None,
+    rating=None,
+    duration=None,
+    description=None
+):
 
     with db_connection() as conn:
         with conn.cursor() as cur:
@@ -275,15 +284,34 @@ def save_content(message_id, title):
             cur.execute("""
                 INSERT INTO contents (
                     message_id,
-                    title
+                    title,
+                    poster_file_id,
+                    year,
+                    genre,
+                    rating,
+                    duration,
+                    description
                 )
-                VALUES (%s, %s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
 
                 ON CONFLICT (message_id)
-                DO NOTHING
+                DO UPDATE SET
+                    title = EXCLUDED.title,
+                    poster_file_id = EXCLUDED.poster_file_id,
+                    year = EXCLUDED.year,
+                    genre = EXCLUDED.genre,
+                    rating = EXCLUDED.rating,
+                    duration = EXCLUDED.duration,
+                    description = EXCLUDED.description
             """, (
                 message_id,
-                title
+                title,
+                poster_file_id,
+                year,
+                genre,
+                rating,
+                duration,
+                description
             ))
 
         conn.commit()
