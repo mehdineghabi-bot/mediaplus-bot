@@ -382,6 +382,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🎬 فیلم و سریال",
                 callback_data="movies"
             )
+        ],
+        [
+            InlineKeyboardButton(
+                "📰 آخرین اخبار",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "💱 نرخ ارز و طلا",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "₿ دنیای ارز دیجیتال",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎵 موسیقی",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❤️ عاشقانه‌ها",
+                callback_data="coming_soon"
+            )
         ]
     ]
 
@@ -401,6 +431,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     )
     print("START RESPONSE SENT")
+
+
+async def coming_soon(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    await query.message.reply_text(
+        "⏳ این بخش به‌زودی فعال می‌گردد..."
+    )
 
 
 # =========================
@@ -808,6 +855,13 @@ def main():
         )
     )
 
+    app.add_handler(
+        CallbackQueryHandler(
+            coming_soon,
+            pattern="^coming_soon$"
+        )
+    )
+    
     app.add_handler(
         CallbackQueryHandler(
             invite_friends,
