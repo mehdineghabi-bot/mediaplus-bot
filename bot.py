@@ -423,7 +423,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🌹 به مدیا پلاس خوش آمدید\n\n"
             "اینجا دنیایی از فیلم، سریال، اخبار و خدمات متنوع منتظر شماست.\n\n"
             "با ما همراه باشید و تجربه‌ای متفاوت از محتوا را داشته باشید 🎬✨\n\n"
-            "برای ورود به بخش فیلم و سریال روی دکمه زیر بزنید:"
         ),
 
         reply_markup=InlineKeyboardMarkup(
