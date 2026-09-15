@@ -556,25 +556,59 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    keyboard = []
 
-    for content_id, message_id, title in contents:
+    for (
+        content_id,
+        message_id,
+        title,
+        year,
+        genre,
+        rating,
+        duration,
+        description,
+        poster_file_id
+    ) in contents:
 
-        keyboard.append([
-            InlineKeyboardButton(
-                f"🎬 {title}",
-                callback_data=f"content_{content_id}"
-            )
-        ])
 
-    await query.message.reply_text(
-
-        "🎬 فیلم و سریال‌های موجود:",
-
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
+        caption = (
+            f"🎬 {title}\n\n"
+            f"📅 سال: {year or 'نامشخص'}\n"
+            f"🎭 ژانر: {genre or 'نامشخص'}\n"
+            f"⭐ امتیاز: {rating or 'نامشخص'}\n"
+            f"⏱ مدت: {duration or 'نامشخص'}\n\n"
+            f"📝 خلاصه:\n"
+            f"{description or 'بدون توضیحات'}"
         )
-    )
+
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "⬇️ دانلود",
+                    callback_data=f"content_{content_id}"
+                )
+            ]
+        ]
+
+
+        if poster_file_id:
+
+            await query.message.reply_photo(
+                photo=poster_file_id,
+                caption=caption,
+                reply_markup=InlineKeyboardMarkup(
+                    keyboard
+                )
+            )
+
+        else:
+
+            await query.message.reply_text(
+                caption,
+                reply_markup=InlineKeyboardMarkup(
+                    keyboard
+                )
+            )
 
 
 # =========================
