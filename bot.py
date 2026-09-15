@@ -742,11 +742,44 @@ async def send_content(
 
     if not user or not user[2]:
 
+        invite_link = (
+            f"https://t.me/{BOT_USERNAME}"
+            f"?start=ref_{user_id}"
+        )
+
+        count = get_referral_count(
+            user_id
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "👥 دعوت دوستان",
+                    callback_data="invite"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔍 بررسی دعوت‌ها",
+                    callback_data="check_referrals"
+                )
+            ]
+        ]
+
         await query.message.reply_text(
 
-            "🔒 دسترسی شما هنوز فعال نشده است.\n\n"
-            "ابتدا باید ۵ نفر را دعوت کنید."
+            "🔒 دانلود این فیلم هنوز فعال نیست.\n\n"
 
+            f"👥 دعوت‌های موفق شما: {count} از 5\n\n"
+
+            "برای فعال شدن دانلود همه فیلم‌ها، "
+            "۵ نفر را با لینک اختصاصی خود دعوت کنید:\n\n"
+
+            f"{invite_link}",
+
+            reply_markup=InlineKeyboardMarkup(
+                keyboard
+            )
         )
 
         return
