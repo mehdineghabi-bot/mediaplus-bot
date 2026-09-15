@@ -772,29 +772,86 @@ async def channel_post(
         return
 
     title = "محتوای جدید"
+    year = None
+    genre = None
+    rating = None
+    duration = None
+    description = None
+    poster_file_id = None
+
+
+    # گرفتن پوستر
+    if message.photo:
+
+        poster_file_id = message.photo[-1].file_id
+
+
+    # خواندن کپشن
+    text = ""
 
     if message.caption:
-
-        title = message.caption.split(
-            "\n"
-        )[0][:80]
+        text = message.caption
 
     elif message.text:
+        text = message.text
 
-        title = message.text.split(
-            "\n"
-        )[0][:80]
+
+    if text:
+
+        lines = text.split("\n")
+
+        title = lines[0][:80]
+
+
+        for line in lines:
+
+            if line.startswith("سال:"):
+                year = line.replace(
+                    "سال:",
+                    ""
+                ).strip()
+
+
+            elif line.startswith("ژانر:"):
+                genre = line.replace(
+                    "ژانر:",
+                    ""
+                ).strip()
+
+
+            elif line.startswith("امتیاز:"):
+                rating = line.replace(
+                    "امتیاز:",
+                    ""
+                ).strip()
+
+
+            elif line.startswith("مدت:"):
+                duration = line.replace(
+                    "مدت:",
+                    ""
+                ).strip()
+
+
+        description = text
+
 
     save_content(
         message.message_id,
-        title
+        title,
+        poster_file_id,
+        year,
+        genre,
+        rating,
+        duration,
+        description
     )
+
 
     print(
         f"New content saved: "
         f"{message.message_id} - {title}"
     )
-
 
 # =========================
 # Error Handler
