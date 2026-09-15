@@ -79,18 +79,18 @@ def init_database():
                 )
             """)
 
-           cur.execute("""
-               CREATE TABLE IF NOT EXISTS contents (
-                   id SERIAL PRIMARY KEY,
-                   message_id BIGINT UNIQUE NOT NULL,
-                   title TEXT,
-                   year TEXT,
-                   genre TEXT,
-                   rating TEXT,
-                   duration TEXT,
-                   description TEXT,
-                   poster_file_id TEXT,
-                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS contents (
+                    id SERIAL PRIMARY KEY,
+                    message_id BIGINT UNIQUE NOT NULL,
+                    title TEXT,
+                    year TEXT,
+                    genre TEXT,
+                    rating TEXT,
+                    duration TEXT,
+                    description TEXT,
+                    poster_file_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
