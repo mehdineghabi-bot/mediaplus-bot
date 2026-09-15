@@ -473,84 +473,31 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         return
 
-    verified = user[2]
+    contents = get_contents()
 
-    if verified:
-
-        contents = get_contents()
-
-        if not contents:
-
-            await query.message.reply_text(
-                "🎬 بخش فیلم و سریال\n\n"
-                "هنوز محتوایی اضافه نشده است."
-            )
-
-            return
-
-        keyboard = []
-
-        for content_id, message_id, title in contents:
-
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"🎬 {title}",
-                    callback_data=f"content_{content_id}"
-                )
-            ])
+    if not contents:
 
         await query.message.reply_text(
-
-            "🎬 فیلم و سریال‌های موجود:",
-
-            reply_markup=InlineKeyboardMarkup(
-                keyboard
-            )
+            "🎬 بخش فیلم و سریال\n\n"
+            "هنوز محتوایی اضافه نشده است."
         )
 
         return
 
-    invite_link = (
-        f"https://t.me/{BOT_USERNAME}"
-        f"?start=ref_{user_id}"
-    )
+    keyboard = []
 
-    set_invite_link(
-        user_id,
-        invite_link
-    )
+    for content_id, message_id, title in contents:
 
-    count = get_referral_count(
-        user_id
-    )
-
-    keyboard = [
-        [
+        keyboard.append([
             InlineKeyboardButton(
-                "👥 دعوت دوستان",
-                callback_data="invite"
+                f"🎬 {title}",
+                callback_data=f"content_{content_id}"
             )
-        ],
-        [
-            InlineKeyboardButton(
-                "🔍 بررسی دعوت‌ها",
-                callback_data="check_referrals"
-            )
-        ]
-    ]
+        ])
 
     await query.message.reply_text(
 
-        "🔐 دسترسی فیلم و سریال فعال نیست.\n\n"
-
-        "برای فعال شدن دسترسی، باید "
-        "۵ نفر را از طریق لینک اختصاصی خودتان "
-        "وارد ربات کنید.\n\n"
-
-        f"👥 دعوت‌های موفق: {count} از 5\n\n"
-
-        "بعد از تکمیل ۵ دعوت، بخش فیلم و سریال "
-        "برای شما فعال می‌شود.",
+        "🎬 فیلم و سریال‌های موجود:",
 
         reply_markup=InlineKeyboardMarkup(
             keyboard
