@@ -79,7 +79,7 @@ def init_database():
                 )
             """)
 
-            cur.execute("""
+           cur.execute("""
                CREATE TABLE IF NOT EXISTS contents (
                    id SERIAL PRIMARY KEY,
                    message_id BIGINT UNIQUE NOT NULL,
@@ -93,6 +93,38 @@ def init_database():
                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+
+            cur.execute("""
+                ALTER TABLE contents
+                ADD COLUMN IF NOT EXISTS year TEXT
+            """)
+
+            cur.execute("""
+                ALTER TABLE contents
+                ADD COLUMN IF NOT EXISTS genre TEXT
+            """)
+
+            cur.execute("""
+                ALTER TABLE contents
+                ADD COLUMN IF NOT EXISTS rating TEXT
+            """)
+
+            cur.execute("""
+                ALTER TABLE contents
+                ADD COLUMN IF NOT EXISTS duration TEXT
+            """)
+
+            cur.execute("""
+                ALTER TABLE contents
+                ADD COLUMN IF NOT EXISTS description TEXT
+            """)
+
+            cur.execute("""
+                ALTER TABLE contents
+                ADD COLUMN IF NOT EXISTS poster_file_id TEXT
+            """)
+
 
         conn.commit()
 
