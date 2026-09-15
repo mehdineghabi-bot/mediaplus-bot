@@ -326,7 +326,13 @@ def get_contents():
                 SELECT
                     id,
                     message_id,
-                    title
+                    title,
+                    year,
+                    genre,
+                    rating,
+                    duration,
+                    description,
+                    poster_file_id
                 FROM contents
                 ORDER BY id DESC
                 LIMIT 50
