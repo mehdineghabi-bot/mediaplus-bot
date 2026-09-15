@@ -379,22 +379,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton(
-                "🎬 فیلم و سریال رایگان",
+                "🎬 فیلم و سریال",
                 callback_data="movies"
             )
         ]
     ]
 
-    await update.message.reply_text(
+    await update.message.reply_photo(
 
-        "🎬 به MediaPlus خوش آمدید\n\n"
-        "برای ورود به بخش فیلم و سریال روی دکمه زیر بزنید:",
+        photo="AgACAgQAAxkBAAEimsRqqaTt4IukvsXJwnan4QZER5L0_QACdhBrGwSdUFGeibrtBkrKuQEAAwIAA3kAAz0E",
+
+        caption=(
+            "🌹 به مدیا پلاس خوش آمدید\n\n"
+            "اینجا دنیایی از فیلم، سریال، اخبار و خدمات متنوع منتظر شماست.\n\n"
+            "با ما همراه باشید و تجربه‌ای متفاوت از محتوا را داشته باشید 🎬✨\n\n"
+            "برای ورود به بخش فیلم و سریال روی دکمه زیر بزنید:"
+        ),
 
         reply_markup=InlineKeyboardMarkup(
             keyboard
         )
     )
-
     print("START RESPONSE SENT")
 
 
