@@ -282,6 +282,15 @@ def save_content(
         with conn.cursor() as cur:
 
             cur.execute("""
+                SELECT 1
+                FROM contents
+                WHERE title = %s
+            """, (title,))
+
+            if cur.fetchone():
+                return
+
+            cur.execute("""
                 INSERT INTO contents (
                     message_id,
                     title,
