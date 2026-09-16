@@ -2,6 +2,7 @@ import os
 import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from datetime import datetime
 
 import psycopg
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -95,6 +96,19 @@ def init_database():
             """)
 
 
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS news (
+                    id SERIAL PRIMARY KEY,
+                    source TEXT,
+                    title TEXT,
+                    text TEXT,
+                    photo_file_id TEXT,
+                    news_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(source, title)
+                )
+            """)
+
+        
             cur.execute("""
                 ALTER TABLE contents
                 ADD COLUMN IF NOT EXISTS year TEXT
@@ -378,6 +392,61 @@ def get_content_message_id(content_id):
             return row[0] if row else None
 
 
+def save_news(
+    source,
+    title,
+    text,
+    photo_file_id=None
+):
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                INSERT INTO news
+                (
+                    source,
+                    title,
+                    text,
+                    photo_file_id
+                )
+                VALUES
+                (%s,%s,%s,%s)
+
+                ON CONFLICT(source,title)
+                DO NOTHING
+            """,
+            (
+                source,
+                title,
+                text,
+                photo_file_id
+            ))
+
+        conn.commit()
+
+
+
+def get_latest_news():
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                SELECT
+                    id,
+                    source,
+                    title,
+                    text,
+                    photo_file_id
+                FROM news
+                ORDER BY id DESC
+                LIMIT 10
+            """)
+
+            return cur.fetchall()
+
+
 # =========================
 # Start + Referral
 # =========================
@@ -479,11 +548,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton(
                 "📰 آخرین اخبار",
-                url="https://t.me/akharinkhabar"
+                callback_data="latest_news"
             ),
             InlineKeyboardButton(
-             "🚨 اخبار جنگ",
-             url="https://t.me/M0_HM"
+                "🚨 اخبار جنگ",
+                url="https://t.me/M0_HM"
             )
         ], 
         [
@@ -544,6 +613,62 @@ async def coming_soon(
     await query.message.reply_text(
         "⏳ این بخش به‌زودی فعال می‌گردد..."
     )
+
+
+async def latest_news(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+
+    news_list = get_latest_news()
+
+
+    if not news_list:
+
+        await query.message.reply_text(
+            "📰 هنوز خبری دریافت نشده است."
+        )
+
+        return
+
+
+    for (
+        news_id,
+        source,
+        title,
+        text,
+        photo_file_id
+    ) in news_list:
+
+
+        caption = (
+            f"📰 {title}\n\n"
+            f"{text}\n\n"
+            f"📌 منبع: {source}"
+        )
+
+
+        if photo_file_id:
+
+            await query.message.reply_photo(
+                photo=photo_file_id,
+                caption=caption
+            )
+
+        else:
+
+            await query.message.reply_text(
+                caption
+            )
+
 
 
 # =========================
@@ -1082,6 +1207,13 @@ def main():
         )
     )
 
+    app.add_handler(
+        CallbackQueryHandler(
+            latest_news,
+            pattern="^latest_news$"
+        )
+    )
+    
     app.add_handler(
         CallbackQueryHandler(
             coming_soon,
