@@ -489,7 +489,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton(
                 "💱 نرخ ارز و طلا",
-                url="https://t.me/+gOs48uRwL402ZjJk"
+                url="https://t.me/NerkhTv1"
             )
         ],
         [
