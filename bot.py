@@ -1052,7 +1052,6 @@ def main():
     print("MediaPlus Bot started...")
     print("Starting Telegram polling...")
 
-    clear_contents()
     
     app.run_polling(
         drop_pending_updates=False
