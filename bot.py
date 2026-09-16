@@ -1027,8 +1027,6 @@ def main():
 
     init_database()
 
-    clear_contents()
-
     print("Database initialized.")
 
     threading.Thread(
