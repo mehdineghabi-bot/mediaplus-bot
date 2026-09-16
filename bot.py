@@ -341,6 +341,18 @@ def get_contents():
             return cur.fetchall()
 
 
+def clear_contents():
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                DELETE FROM contents
+            """)
+
+        conn.commit()
+
+
 def get_content_message_id(content_id):
 
     with db_connection() as conn:
@@ -1040,6 +1052,8 @@ def main():
     print("MediaPlus Bot started...")
     print("Starting Telegram polling...")
 
+    clear_contents()
+    
     app.run_polling(
         drop_pending_updates=False
     )
