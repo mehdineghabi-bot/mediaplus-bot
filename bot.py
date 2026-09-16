@@ -446,15 +446,6 @@ def get_latest_news():
 
             return cur.fetchall()
 
-def add_test_news():
-
-    save_news(
-        source="MediaPlus Test",
-        title="آغاز فعالیت بخش اخبار مدیا پلاس",
-        text="این یک خبر آزمایشی برای بررسی سیستم نمایش اخبار در ربات است.",
-        photo_file_id=None
-    )
-
 
 # =========================
 # Start + Referral
@@ -1188,8 +1179,6 @@ def main():
     init_database()
 
     print("Database initialized.")
-
-    add_test_news()
     
     threading.Thread(
         target=start_web_server,
