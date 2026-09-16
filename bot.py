@@ -473,7 +473,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 url="https://t.me/akharinkhabar"
             ),
             InlineKeyboardButton(
-             "🚨 اخبار فوری جنگ",
+             "🚨 اخبار جنگ",
              url="https://t.me/M0_HM"
             )
         ], 
