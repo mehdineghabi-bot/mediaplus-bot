@@ -902,44 +902,60 @@ async def channel_post(
         title = lines[0].strip()[:80]
 
 
-        # استخراج اطلاعات
+        # استخراج اطلاعات هوشمند
         for line in lines:
 
             line = line.strip()
 
-            if line.startswith("سال:") or line.startswith("سال "):
-
-                year = line.replace(
-                    "سال:",
-                    ""
-                ).replace(
-                    "سال ",
-                    ""
-                ).strip()
-
-
-            elif line.startswith("ژانر:"):
-
-                genre = line.replace(
-                    "ژانر:",
-                    ""
-                ).strip()
+            clean_line = (
+                line
+                .replace("📅", "")
+                .replace("🎭", "")
+                .replace("⭐", "")
+                .replace("⏱", "")
+                .strip()
+            )
 
 
-            elif line.startswith("امتیاز:"):
+            if clean_line.startswith("سال"):
 
-                rating = line.replace(
-                    "امتیاز:",
-                    ""
-                ).strip()
+                year = (
+                    clean_line
+                    .replace("سال ساخت:", "")
+                    .replace("سال:", "")
+                    .replace("سال :", "")
+                    .strip()
+                )
 
 
-            elif line.startswith("مدت:"):
+            elif clean_line.startswith("ژانر"):
 
-                duration = line.replace(
-                    "مدت:",
-                    ""
-                ).strip()
+                genre = (
+                    clean_line
+                    .replace("ژانر:", "")
+                    .replace("ژانر :", "")
+                    .strip()
+                )
+
+
+            elif clean_line.startswith("امتیاز"):
+
+                rating = (
+                    clean_line
+                    .replace("امتیاز:", "")
+                    .replace("امتیاز :", "")
+                    .strip()
+                )
+
+
+            elif clean_line.startswith("مدت"):
+
+                duration = (
+                    clean_line
+                    .replace("مدت:", "")
+                    .replace("مدت :", "")
+                    .strip()
+                )
 
 
         # استخراج فقط خلاصه داستان
@@ -951,9 +967,19 @@ async def channel_post(
 
             line = line.strip()
 
-            if line.startswith("خلاصه داستان:"):
+            if line.startswith("خلاصه داستان"):
 
                 in_summary = True
+    
+                text_after = (
+                    line
+                    .replace("خلاصه داستان:", "")
+                    .replace("خلاصه داستان :", "")
+                    .strip()
+                )
+
+                if text_after:
+                    summary_lines.append(text_after)
 
                 continue
 
