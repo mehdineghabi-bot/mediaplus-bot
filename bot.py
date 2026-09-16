@@ -471,8 +471,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 "📰 آخرین اخبار",
                 url="https://t.me/akharinkhabar"
+            ),
+            InlineKeyboardButton(
+             "🚨 اخبار فوری جنگ",
+             url="https://t.me/M0_HM"
             )
-        ],
+        ], 
         [
             InlineKeyboardButton(
                 "💱 نرخ ارز و طلا",
