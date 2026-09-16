@@ -885,19 +885,28 @@ async def channel_post(
 
         lines = text.split("\n")
 
-        title = lines[0][:80]
+        # عنوان = خط اول
+        title = lines[0].strip()[:80]
 
 
+        # استخراج اطلاعات
         for line in lines:
 
-            if line.startswith("سال:"):
+            line = line.strip()
+
+            if line.startswith("سال:") or line.startswith("سال "):
+
                 year = line.replace(
                     "سال:",
+                    ""
+                ).replace(
+                    "سال ",
                     ""
                 ).strip()
 
 
             elif line.startswith("ژانر:"):
+
                 genre = line.replace(
                     "ژانر:",
                     ""
@@ -905,6 +914,7 @@ async def channel_post(
 
 
             elif line.startswith("امتیاز:"):
+
                 rating = line.replace(
                     "امتیاز:",
                     ""
@@ -912,13 +922,37 @@ async def channel_post(
 
 
             elif line.startswith("مدت:"):
+
                 duration = line.replace(
                     "مدت:",
                     ""
                 ).strip()
 
 
-        description = text
+        # استخراج فقط خلاصه داستان
+        summary_lines = []
+
+        in_summary = False
+
+        for line in lines:
+
+            line = line.strip()
+
+            if line.startswith("خلاصه داستان:"):
+
+                in_summary = True
+
+                continue
+
+
+            if in_summary and line:
+
+                summary_lines.append(line)
+
+
+        description = "\n".join(
+            summary_lines
+        ).strip() or None
 
 
     save_content(
