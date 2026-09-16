@@ -1017,6 +1017,7 @@ def main():
     print("Initializing database...")
 
     init_database()
+    clear_contents()
 
     print("Database initialized.")
 
