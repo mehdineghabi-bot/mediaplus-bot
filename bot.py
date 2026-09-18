@@ -46,15 +46,17 @@ NEWS_STORAGE_CHAT_ID = os.getenv("NEWS_STORAGE_CHAT_ID")
 
 async def print_storage_channel_id():
     try:
+        print("=== TELEGRAM CHATS START ===")
+
         dialogs = await telegram_client.get_dialogs()
 
         for dialog in dialogs:
-            print(f"TELEGRAM CHAT: {dialog.name} | ID: {dialog.id}")
+            print(f"NAME={dialog.name} | ID={dialog.id}")
+
+        print("=== TELEGRAM CHATS END ===")
 
     except Exception as e:
-        print("Storage channel ID error:", e)
-# Global Application reference used by the Telethon news worker.
-bot_app = None
+        print(f"Storage channel ID error: {e}")
 
 
 # =========================
