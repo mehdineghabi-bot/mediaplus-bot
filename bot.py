@@ -135,9 +135,17 @@ def init_database():
             """)
 
             cur.execute("""
+                ALTER TABLE news
+                DROP CONSTRAINT IF EXISTS news_source_title_key
+            """)
+
+            cur.execute("""
+                DROP INDEX IF EXISTS news_source_message_unique
+            """)
+
+            cur.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS news_source_message_unique
                 ON news(source, telegram_message_id)
-                WHERE telegram_message_id IS NOT NULL
             """)
 
         
@@ -482,6 +490,21 @@ def save_news(
 
 
 
+def get_news_photo_file_id(source, telegram_message_id):
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT photo_file_id
+                FROM news
+                WHERE source = %s
+                  AND telegram_message_id = %s
+                LIMIT 1
+            """, (source, telegram_message_id))
+
+            row = cur.fetchone()
+            return row[0] if row and row[0] else None
+
+
 def get_latest_news():
     
     with db_connection() as conn:
@@ -550,12 +573,19 @@ async def fetch_news_from_telegram():
                     else news_text
                 )
 
-                photo_file_id = None
+                photo_file_id = get_news_photo_file_id(
+                    channel,
+                    message.id
+                )
 
-                # Telethon's file/media identifiers are not Bot API file_ids.
-                # Download the photo and upload it with the bot, then store
-                # the Bot API file_id for later display.
-                if message.photo and NEWS_STORAGE_CHAT_ID and bot_app:
+                # Upload each news photo only once and reuse the Bot API
+                # file_id on later 5-minute polling cycles.
+                if (
+                    not photo_file_id
+                    and message.photo
+                    and NEWS_STORAGE_CHAT_ID
+                    and bot_app
+                ):
                     try:
                         photo_bytes = await telegram_client.download_media(
                             message,
@@ -740,18 +770,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ]
 
-    await update.message.reply_text(
-
-        text=(
-            "🌹 به مدیا پلاس خوش آمدید\n\n"
-            "اینجا دنیایی از فیلم، سریال، اخبار و خدمات متنوع منتظر شماست.\n\n"
-            "با ما همراه باشید و تجربه‌ای متفاوت از محتوا را داشته باشید 🎬✨"
-        ),
-
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        )
+    welcome_text = (
+        "🌹 به مدیا پلاس خوش آمدید\n\n"
+        "اینجا دنیایی از فیلم، سریال، اخبار و خدمات متنوع منتظر شماست.\n\n"
+        "با ما همراه باشید و تجربه‌ای متفاوت از محتوا را داشته باشید 🎬✨"
     )
+
+    welcome_photo_file_id = os.getenv("WELCOME_PHOTO_FILE_ID")
+
+    if welcome_photo_file_id:
+        try:
+            await update.message.reply_photo(
+                photo=welcome_photo_file_id,
+                caption=welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except BadRequest as photo_error:
+            print(f"Welcome photo error: {photo_error}")
+            await update.message.reply_text(
+                text=welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+    else:
+        await update.message.reply_text(
+            text=welcome_text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
     print("START RESPONSE SENT")
 
 
@@ -1369,13 +1413,6 @@ def main():
 
     print("Render health server started.")
 
-    threading.Thread(
-        target=run_telethon,
-        daemon=True
-    ).start()
-
-    print("Telethon runner started.")
-
     global bot_app
 
     app = (
@@ -1385,6 +1422,13 @@ def main():
     )
 
     bot_app = app
+
+    threading.Thread(
+        target=run_telethon,
+        daemon=True
+    ).start()
+
+    print("Telethon runner started.")
 
     app.add_handler(
         CommandHandler(
