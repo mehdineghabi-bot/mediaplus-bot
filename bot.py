@@ -38,6 +38,14 @@ CONTENT_CHANNEL_ID = -1004485551897
 # نام ربات
 BOT_USERNAME = "Mediapluscenterbot"
 
+# A private chat/channel used only to upload news photos through Bot API.
+# Set this Render environment variable to a chat/channel where the bot has
+# permission to send messages. If it is not set, news text still works.
+NEWS_STORAGE_CHAT_ID = os.getenv("NEWS_STORAGE_CHAT_ID")
+
+# Global Application reference used by the Telethon news worker.
+bot_app = None
+
 
 # =========================
 # Render Health Server
@@ -116,9 +124,20 @@ def init_database():
                     title TEXT,
                     text TEXT,
                     photo_file_id TEXT,
-                    news_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(source, title)
+                    telegram_message_id BIGINT,
+                    news_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+
+            cur.execute("""
+                ALTER TABLE news
+                ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT
+            """)
+
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS news_source_message_unique
+                ON news(source, telegram_message_id)
+                WHERE telegram_message_id IS NOT NULL
             """)
 
         
@@ -409,32 +428,55 @@ def save_news(
     source,
     title,
     text,
-    photo_file_id=None
+    photo_file_id=None,
+    telegram_message_id=None
 ):
 
     with db_connection() as conn:
         with conn.cursor() as cur:
 
-            cur.execute("""
-                INSERT INTO news
-                (
+            if telegram_message_id is not None:
+                cur.execute("""
+                    INSERT INTO news
+                    (
+                        source,
+                        title,
+                        text,
+                        photo_file_id,
+                        telegram_message_id
+                    )
+                    VALUES (%s,%s,%s,%s,%s)
+                    ON CONFLICT (source, telegram_message_id)
+                    DO UPDATE SET
+                        title = EXCLUDED.title,
+                        text = EXCLUDED.text,
+                        photo_file_id = COALESCE(
+                            EXCLUDED.photo_file_id,
+                            news.photo_file_id
+                        )
+                """, (
+                    source,
+                    title,
+                    text,
+                    photo_file_id,
+                    telegram_message_id
+                ))
+            else:
+                cur.execute("""
+                    INSERT INTO news
+                    (
+                        source,
+                        title,
+                        text,
+                        photo_file_id
+                    )
+                    VALUES (%s,%s,%s,%s)
+                """, (
                     source,
                     title,
                     text,
                     photo_file_id
-                )
-                VALUES
-                (%s,%s,%s,%s)
-
-                ON CONFLICT(source,title)
-                DO NOTHING
-            """,
-            (
-                source,
-                title,
-                text,
-                photo_file_id
-            ))
+                ))
 
         conn.commit()
 
@@ -471,17 +513,24 @@ NEWS_CHANNELS = [
 
 async def fetch_news_from_telegram():
     try:
-        await telegram_client.connect()
+        if not telegram_client.is_connected():
+            await telegram_client.connect()
 
         if not await telegram_client.is_user_authorized():
             print("Telethon: User is not authorized.")
             return
 
+        if not NEWS_STORAGE_CHAT_ID:
+            print(
+                "Telethon: NEWS_STORAGE_CHAT_ID is not set; "
+                "news photos will not be stored."
+            )
+
         for channel in NEWS_CHANNELS:
 
             messages = await telegram_client.get_messages(
                 channel,
-                limit=10
+                limit=20
             )
 
             for message in messages:
@@ -489,28 +538,72 @@ async def fetch_news_from_telegram():
                 if not message or not message.message:
                     continue
 
-                text = message.message.strip()
+                news_text = message.message.strip()
 
-                lines = text.split("\n", 1)
+                lines = news_text.split("\n", 1)
 
                 title = lines[0][:250].strip()
 
                 body = (
                     lines[1].strip()
                     if len(lines) > 1
-                    else text
+                    else news_text
                 )
+
+                photo_file_id = None
+
+                # Telethon's file/media identifiers are not Bot API file_ids.
+                # Download the photo and upload it with the bot, then store
+                # the Bot API file_id for later display.
+                if message.photo and NEWS_STORAGE_CHAT_ID and bot_app:
+                    try:
+                        photo_bytes = await telegram_client.download_media(
+                            message,
+                            file=bytes
+                        )
+
+                        if photo_bytes:
+                            sent = await bot_app.bot.send_photo(
+                                chat_id=NEWS_STORAGE_CHAT_ID,
+                                photo=photo_bytes
+                            )
+                            if sent.photo:
+                                photo_file_id = sent.photo[-1].file_id
+
+                    except Exception as photo_error:
+                        print(
+                            f"News photo error for message "
+                            f"{message.id}: {photo_error}"
+                        )
 
                 save_news(
                     source=channel,
                     title=title,
-                    text=body
+                    text=body,
+                    photo_file_id=photo_file_id,
+                    telegram_message_id=message.id
+                )
+
+                print(
+                    f"News checked: {channel} / message_id={message.id} / "
+                    f"title={title[:80]}"
                 )
 
         print("Telethon: News fetched successfully.")
 
     except Exception as e:
         print(f"Telethon news error: {e}")
+
+
+async def news_fetch_loop():
+    while True:
+        try:
+            await fetch_news_from_telegram()
+        except Exception as e:
+            print(f"News loop error: {e}")
+
+        # Check for new posts every 5 minutes.
+        await asyncio.sleep(300)
 
 
 # =========================
@@ -647,14 +740,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ]
 
-    await update.message.reply_photo(
+    await update.message.reply_text(
 
-        photo="AgACAgQAAxkBAAEimsRqqaTt4IukvsXJwnan4QZER5L0_QACdhBrGwSdUFGeibrtBkrKuQEAAwIAA3kAAz0E",
-
-        caption=(
+        text=(
             "🌹 به مدیا پلاس خوش آمدید\n\n"
             "اینجا دنیایی از فیلم، سریال، اخبار و خدمات متنوع منتظر شماست.\n\n"
-            "با ما همراه باشید و تجربه‌ای متفاوت از محتوا را داشته باشید 🎬✨\n\n"
+            "با ما همراه باشید و تجربه‌ای متفاوت از محتوا را داشته باشید 🎬✨"
         ),
 
         reply_markup=InlineKeyboardMarkup(
@@ -723,17 +814,21 @@ async def latest_news(
 
 
         if photo_file_id:
+            try:
+                await query.message.reply_photo(
+                    photo=photo_file_id,
+                    caption=caption
+                )
+                continue
+            except BadRequest as photo_error:
+                print(
+                    f"Invalid news photo file_id for news {news_id}: "
+                    f"{photo_error}"
+                )
 
-            await query.message.reply_photo(
-                photo=photo_file_id,
-                caption=caption
-            )
-
-        else:
-
-            await query.message.reply_text(
-                caption
-            )
+        await query.message.reply_text(
+            caption
+        )
 
 
 
@@ -1237,7 +1332,7 @@ def run_telethon():
 
             await fetch_news_from_telegram()
 
-            await telegram_client.run_until_disconnected()
+            await news_fetch_loop()
 
         except Exception as e:
             print(f"Telethon runner error: {e}")
@@ -1281,11 +1376,15 @@ def main():
 
     print("Telethon runner started.")
 
+    global bot_app
+
     app = (
         Application.builder()
         .token(TOKEN)
         .build()
     )
+
+    bot_app = app
 
     app.add_handler(
         CommandHandler(
