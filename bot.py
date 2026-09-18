@@ -1353,31 +1353,7 @@ async def channel_post(
         f"{message.message_id} - {title}"
     )
 
-# =========================
-# Temporary Photo File ID
-# =========================
 
-async def get_photo_file_id(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message or not update.message.photo:
-        return
-
-    file_id = update.message.photo[-1].file_id
-
-    print("================================")
-    print("NEW WELCOME PHOTO FILE ID:")
-    print(file_id)
-    print("================================")
-
-    await update.message.reply_text(
-        "✅ تصویر دریافت شد.\n\n"
-        "FILE_ID:\n"
-        f"{file_id}"
-    )
-    
 # =========================
 # Error Handler
 # =========================
@@ -1475,14 +1451,7 @@ def main():
             start
         )
     )
-
-    app.add_handler(
-        MessageHandler(
-            filters.PHOTO & filters.ChatType.PRIVATE,
-            get_photo_file_id
-        )
-    )
-    
+   
     app.add_handler(
         CallbackQueryHandler(
             movies,
