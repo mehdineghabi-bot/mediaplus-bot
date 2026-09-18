@@ -49,9 +49,7 @@ async def print_storage_channel_id():
         dialogs = await telegram_client.get_dialogs()
 
         for dialog in dialogs:
-            if dialog.name == "MediaPlus Storage":
-                print("NEWS_STORAGE_CHAT_ID =", dialog.id)
-                break
+            print(f"TELEGRAM CHAT: {dialog.name} | ID: {dialog.id}")
 
     except Exception as e:
         print("Storage channel ID error:", e)
