@@ -5,6 +5,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime
 
 import psycopg
+from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest
 from telegram.ext import (
@@ -18,6 +20,16 @@ from telegram.ext import (
 
 TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+API_ID = int(os.getenv("API_ID", "0"))
+API_HASH = os.getenv("API_HASH")
+TELEGRAM_SESSION = os.getenv("TELEGRAM_SESSION")
+
+telegram_client = TelegramClient(
+    StringSession(TELEGRAM_SESSION),
+    API_ID,
+    API_HASH
+)
 
 # کانال خصوصی محتوای MediaPlus
 CONTENT_CHANNEL_ID = -1004485551897
