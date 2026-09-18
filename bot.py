@@ -43,6 +43,18 @@ BOT_USERNAME = "Mediapluscenterbot"
 # permission to send messages. If it is not set, news text still works.
 NEWS_STORAGE_CHAT_ID = os.getenv("NEWS_STORAGE_CHAT_ID")
 
+
+async def print_storage_channel_id():
+    try:
+        dialogs = await telegram_client.get_dialogs()
+
+        for dialog in dialogs:
+            if dialog.name == "MediaPlus Storage":
+                print("NEWS_STORAGE_CHAT_ID =", dialog.id)
+                break
+
+    except Exception as e:
+        print("Storage channel ID error:", e)
 # Global Application reference used by the Telethon news worker.
 bot_app = None
 
@@ -1372,6 +1384,8 @@ def run_telethon():
         try:
             await telegram_client.start()
 
+            await print_storage_channel_id()
+            
             print("Telethon connected successfully.")
 
             await fetch_news_from_telegram()
