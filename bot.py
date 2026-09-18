@@ -749,7 +749,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton(
                 "📰 آخرین اخبار",
-                callback_data="latest_news"
+                url="https://t.me/akharinkhabar"
             ),
             InlineKeyboardButton(
                 "🚨 اخبار جنگ",
@@ -1457,14 +1457,7 @@ def main():
             pattern="^movies$"
         )
     )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            latest_news,
-            pattern="^latest_news$"
-        )
-    )
-    
+  
     app.add_handler(
         CallbackQueryHandler(
             coming_soon,
