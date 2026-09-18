@@ -754,12 +754,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], 
         [
             InlineKeyboardButton(
-                "💱 نرخ ارز و طلا",
-                url="https://t.me/NerkhTv1"
-            )
-        ],
-        [
-            InlineKeyboardButton(
                 "₿ دنیای ارز دیجیتال",
                 callback_data="coming_soon"
             )
