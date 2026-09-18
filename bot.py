@@ -1,6 +1,7 @@
 import os
 import threading
 import traceback
+import asyncio
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime
 
@@ -457,6 +458,59 @@ def get_latest_news():
             """)
 
             return cur.fetchall()
+
+
+# =========================
+# Telethon - دریافت اخبار
+# =========================
+
+NEWS_CHANNELS = [
+    "akharinkhabar"
+]
+
+
+async def fetch_news_from_telegram():
+    try:
+        await telegram_client.connect()
+
+        if not await telegram_client.is_user_authorized():
+            print("Telethon: User is not authorized.")
+            return
+
+        for channel in NEWS_CHANNELS:
+
+            messages = await telegram_client.get_messages(
+                channel,
+                limit=10
+            )
+
+            for message in messages:
+
+                if not message or not message.message:
+                    continue
+
+                text = message.message.strip()
+
+                lines = text.split("\n", 1)
+
+                title = lines[0][:250].strip()
+
+                body = (
+                    lines[1].strip()
+                    if len(lines) > 1
+                    else text
+                )
+
+                save_news(
+                    source=channel,
+                    title=title,
+                    text=body
+                )
+
+        print("Telethon: News fetched successfully.")
+
+    except Exception as e:
+        print(f"Telethon news error: {e}")
 
 
 # =========================
@@ -1171,6 +1225,27 @@ async def error_handler(
 
 
 # =========================
+# Telethon Runner
+# =========================
+
+def run_telethon():
+    async def runner():
+        try:
+            await telegram_client.start()
+
+            print("Telethon connected successfully.")
+
+            await fetch_news_from_telegram()
+
+            await telegram_client.run_until_disconnected()
+
+        except Exception as e:
+            print(f"Telethon runner error: {e}")
+
+    asyncio.run(runner())
+
+
+# =========================
 # Main
 # =========================
 
@@ -1198,6 +1273,13 @@ def main():
     ).start()
 
     print("Render health server started.")
+
+    threading.Thread(
+        target=run_telethon,
+        daemon=True
+    ).start()
+
+    print("Telethon runner started.")
 
     app = (
         Application.builder()
