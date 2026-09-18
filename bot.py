@@ -749,9 +749,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton(
                 "📰 آخرین اخبار",
-                url="https://t.me/akharinkhabar"
-            ),
-        ], 
+                callback_data="news_menu"
+            )
+        ],
         [
             InlineKeyboardButton(
                 "₿ دنیای ارز دیجیتال",
@@ -876,6 +876,67 @@ async def latest_news(
             caption
         )
 
+
+# =========================
+# News Menu
+# =========================
+
+async def news_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📰 آخرین خبر",
+                url="https://t.me/akharinkhabar"
+            ),
+            InlineKeyboardButton(
+                "🇮🇷 ایران نیوز",
+                url="https://t.me/IranNews"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🚨 اخبار فوری جنگ",
+                url="https://t.me/M0_HM"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📺 BBC فارسی",
+                url="https://t.me/bbcpersian"
+            ),
+            InlineKeyboardButton(
+                "📡 ایران اینترنشنال",
+                url="https://t.me/IranintlTV"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "💰 نرخ طلا و ارز 1",
+                url="https://t.me/NerkhTv1"
+            ),
+            InlineKeyboardButton(
+                "💵 نرخ طلا و ارز 2",
+                url="https://t.me/DO_L4"
+            )
+        ]
+    ]
+
+    await query.message.reply_text(
+        "📰 منابع خبری مدیا پلاس\n\n"
+        "یکی از منابع خبری زیر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 # =========================
@@ -1448,7 +1509,14 @@ def main():
             pattern="^movies$"
         )
     )
-  
+
+    app.add_handler(
+        CallbackQueryHandler(
+            news_menu,
+            pattern="^news_menu$"
+        )
+    )
+    
     app.add_handler(
         CallbackQueryHandler(
             coming_soon,
