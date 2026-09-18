@@ -39,8 +39,6 @@ CONTENT_CHANNEL_ID = -1004485551897
 BOT_USERNAME = "Mediapluscenterbot"
 
 # A private chat/channel used only to upload news photos through Bot API.
-# Set this Render environment variable to a chat/channel where the bot has
-# permission to send messages. If it is not set, news text still works.
 NEWS_STORAGE_CHAT_ID = os.getenv("NEWS_STORAGE_CHAT_ID")
 
 
@@ -128,7 +126,6 @@ def init_database():
                 )
             """)
 
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS news (
                     id SERIAL PRIMARY KEY,
@@ -160,7 +157,6 @@ def init_database():
                 ON news(source, telegram_message_id)
             """)
 
-        
             cur.execute("""
                 ALTER TABLE contents
                 ADD COLUMN IF NOT EXISTS year TEXT
@@ -191,6 +187,18 @@ def init_database():
                 ADD COLUMN IF NOT EXISTS poster_file_id TEXT
             """)
 
+            # =========================
+            # Notification Settings
+            # =========================
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS notification_settings (
+                    user_id BIGINT PRIMARY KEY,
+                    enabled BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
         conn.commit()
 
@@ -333,6 +341,160 @@ def get_referral_count(user_id):
             return cur.fetchone()[0]
 
 
+# =========================
+# Notification Database
+# =========================
+
+def set_notification_status(user_id, enabled):
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                INSERT INTO notification_settings (
+                    user_id,
+                    enabled,
+                    updated_at
+                )
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    enabled = EXCLUDED.enabled,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (
+                user_id,
+                enabled
+            ))
+
+        conn.commit()
+
+
+def get_notification_status(user_id):
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                SELECT enabled
+                FROM notification_settings
+                WHERE user_id = %s
+            """, (user_id,))
+
+            row = cur.fetchone()
+
+            if not row:
+                return False
+
+            return row[0]
+
+
+def get_notification_users():
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                SELECT user_id
+                FROM notification_settings
+                WHERE enabled = TRUE
+            """)
+
+            return [
+                row[0]
+                for row in cur.fetchall()
+            ]
+
+
+# =========================
+# Main Menu
+# =========================
+
+def get_main_keyboard():
+
+    return [
+        [
+            InlineKeyboardButton(
+                "🎬 فیلم و سریال",
+                callback_data="movies"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📰 آخرین اخبار",
+                callback_data="news_menu"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "₿ دنیای ارز دیجیتال",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎵 موسیقی",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❤️ عاشقانه‌ها",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔔 منو باخبر کن",
+                callback_data="notifications"
+            )
+        ]
+    ]
+
+
+WELCOME_TEXT = (
+    "🌹 به مدیا پلاس خوش آمدید\n\n"
+    "اینجا دنیایی از فیلم، سریال، اخبار و خدمات متنوع منتظر شماست.\n\n"
+    "با ما همراه باشید و تجربه‌ای متفاوت از محتوا را داشته باشید 🎬✨"
+)
+
+
+async def send_main_menu(chat_id, context):
+
+    keyboard = get_main_keyboard()
+
+    welcome_photo_file_id = os.getenv("WELCOME_PHOTO_FILE_ID")
+
+    if welcome_photo_file_id:
+
+        try:
+
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=welcome_photo_file_id,
+                caption=WELCOME_TEXT,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+            return
+
+        except BadRequest as photo_error:
+
+            print(
+                f"Main menu photo error: {photo_error}"
+            )
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=WELCOME_TEXT,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# =========================
+# Content Database
+# =========================
+
 def save_content(
     message_id,
     title,
@@ -347,6 +509,7 @@ def save_content(
     with db_connection() as conn:
         with conn.cursor() as cur:
 
+            # جلوگیری از ثبت محتوای تکراری با عنوان مشابه
             cur.execute("""
                 SELECT 1
                 FROM contents
@@ -354,7 +517,17 @@ def save_content(
             """, (title,))
 
             if cur.fetchone():
-                return
+                return False
+
+            # بررسی اینکه message_id قبلاً ثبت نشده باشد
+            cur.execute("""
+                SELECT 1
+                FROM contents
+                WHERE message_id = %s
+            """, (message_id,))
+
+            if cur.fetchone():
+                return False
 
             cur.execute("""
                 INSERT INTO contents (
@@ -368,16 +541,6 @@ def save_content(
                     description
                 )
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-
-                ON CONFLICT (message_id)
-                DO UPDATE SET
-                    title = EXCLUDED.title,
-                    poster_file_id = EXCLUDED.poster_file_id,
-                    year = EXCLUDED.year,
-                    genre = EXCLUDED.genre,
-                    rating = EXCLUDED.rating,
-                    duration = EXCLUDED.duration,
-                    description = EXCLUDED.description
             """, (
                 message_id,
                 title,
@@ -390,6 +553,8 @@ def save_content(
             ))
 
         conn.commit()
+
+    return True
 
 
 def get_contents():
@@ -444,6 +609,67 @@ def get_content_message_id(content_id):
             return row[0] if row else None
 
 
+# =========================
+# Send New Content Notification
+# =========================
+
+async def notify_new_content():
+
+    users = get_notification_users()
+
+    if not users:
+
+        print(
+            "No notification subscribers."
+        )
+
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🏠 ورود به منوی اصلی",
+                callback_data="main_menu"
+            )
+        ]
+    ]
+
+    notification_text = (
+        "🔔 محتوای جدید در مدیا پلاس منتشر شد!\n\n\n"
+        "برای مشاهده وارد شوید 👇"
+    )
+
+    success_count = 0
+
+    for user_id in users:
+
+        try:
+
+            await bot_app.bot.send_message(
+                chat_id=user_id,
+                text=notification_text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+            success_count += 1
+
+        except Exception as e:
+
+            print(
+                f"Notification error for user "
+                f"{user_id}: {e}"
+            )
+
+    print(
+        f"New content notification sent to "
+        f"{success_count} users."
+    )
+
+
+# =========================
+# News Database
+# =========================
+
 def save_news(
     source,
     title,
@@ -456,6 +682,7 @@ def save_news(
         with conn.cursor() as cur:
 
             if telegram_message_id is not None:
+
                 cur.execute("""
                     INSERT INTO news
                     (
@@ -481,7 +708,9 @@ def save_news(
                     photo_file_id,
                     telegram_message_id
                 ))
+
             else:
+
                 cur.execute("""
                     INSERT INTO news
                     (
@@ -501,24 +730,29 @@ def save_news(
         conn.commit()
 
 
-
 def get_news_photo_file_id(source, telegram_message_id):
+
     with db_connection() as conn:
         with conn.cursor() as cur:
+
             cur.execute("""
                 SELECT photo_file_id
                 FROM news
                 WHERE source = %s
                   AND telegram_message_id = %s
                 LIMIT 1
-            """, (source, telegram_message_id))
+            """, (
+                source,
+                telegram_message_id
+            ))
 
             row = cur.fetchone()
+
             return row[0] if row and row[0] else None
 
 
 def get_latest_news():
-    
+
     with db_connection() as conn:
         with conn.cursor() as cur:
 
@@ -547,15 +781,22 @@ NEWS_CHANNELS = [
 
 
 async def fetch_news_from_telegram():
+
     try:
+
         if not telegram_client.is_connected():
             await telegram_client.connect()
 
         if not await telegram_client.is_user_authorized():
-            print("Telethon: User is not authorized.")
+
+            print(
+                "Telethon: User is not authorized."
+            )
+
             return
 
         if not NEWS_STORAGE_CHAT_ID:
+
             print(
                 "Telethon: NEWS_STORAGE_CHAT_ID is not set; "
                 "news photos will not be stored."
@@ -590,29 +831,36 @@ async def fetch_news_from_telegram():
                     message.id
                 )
 
-                # Upload each news photo only once and reuse the Bot API
-                # file_id on later 5-minute polling cycles.
+                # Upload each news photo only once
                 if (
                     not photo_file_id
                     and message.photo
                     and NEWS_STORAGE_CHAT_ID
                     and bot_app
                 ):
+
                     try:
+
                         photo_bytes = await telegram_client.download_media(
                             message,
                             file=bytes
                         )
 
                         if photo_bytes:
+
                             sent = await bot_app.bot.send_photo(
                                 chat_id=NEWS_STORAGE_CHAT_ID,
                                 photo=photo_bytes
                             )
+
                             if sent.photo:
-                                photo_file_id = sent.photo[-1].file_id
+
+                                photo_file_id = (
+                                    sent.photo[-1].file_id
+                                )
 
                     except Exception as photo_error:
+
                         print(
                             f"News photo error for message "
                             f"{message.id}: {photo_error}"
@@ -627,24 +875,37 @@ async def fetch_news_from_telegram():
                 )
 
                 print(
-                    f"News checked: {channel} / message_id={message.id} / "
+                    f"News checked: {channel} / "
+                    f"message_id={message.id} / "
                     f"title={title[:80]}"
                 )
 
-        print("Telethon: News fetched successfully.")
+        print(
+            "Telethon: News fetched successfully."
+        )
 
     except Exception as e:
-        print(f"Telethon news error: {e}")
+
+        print(
+            f"Telethon news error: {e}"
+        )
 
 
 async def news_fetch_loop():
-    while True:
-        try:
-            await fetch_news_from_telegram()
-        except Exception as e:
-            print(f"News loop error: {e}")
 
-        # Check for new posts every 5 minutes.
+    while True:
+
+        try:
+
+            await fetch_news_from_telegram()
+
+        except Exception as e:
+
+            print(
+                f"News loop error: {e}"
+            )
+
+        # بررسی اخبار هر 5 دقیقه
         await asyncio.sleep(300)
 
 
@@ -652,14 +913,23 @@ async def news_fetch_loop():
 # Start + Referral
 # =========================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-    print("START COMMAND RECEIVED")
+    print(
+        "START COMMAND RECEIVED"
+    )
 
     user = update.effective_user
 
     if not user:
-        print("START ERROR: No effective user")
+
+        print(
+            "START ERROR: No effective user"
+        )
+
         return
 
     print(
@@ -688,7 +958,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
 
                 inviter_id = int(
-                    referral_code.replace("ref_", "", 1)
+                    referral_code.replace(
+                        "ref_",
+                        "",
+                        1
+                    )
                 )
 
                 added = add_referral(
@@ -739,67 +1013,165 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     referral_code
                 )
 
+    await send_main_menu(
+        user.id,
+        context
+    )
+
+    print(
+        "START RESPONSE SENT"
+    )
+
+
+# =========================
+# Main Menu Callback
+# =========================
+
+async def main_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+
+        await query.answer()
+
+    except BadRequest:
+        pass
+
+    await send_main_menu(
+        query.from_user.id,
+        context
+    )
+
+
+# =========================
+# Notifications Menu
+# =========================
+
+async def notifications(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+
+        await query.answer()
+
+    except BadRequest:
+        pass
+
+    user_id = query.from_user.id
+
+    enabled = get_notification_status(
+        user_id
+    )
+
+    if enabled:
+
+        status_text = "🟢 اعلان‌ها برای شما فعال است."
+
+    else:
+
+        status_text = "🔴 اعلان‌ها برای شما غیرفعال است."
+
     keyboard = [
         [
             InlineKeyboardButton(
-                "🎬 فیلم و سریال",
-                callback_data="movies"
+                "🔔 فعال کردن اعلان‌ها",
+                callback_data="notifications_on"
             )
         ],
         [
             InlineKeyboardButton(
-                "📰 آخرین اخبار",
-                callback_data="news_menu"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "₿ دنیای ارز دیجیتال",
-                callback_data="coming_soon"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🎵 موسیقی",
-                callback_data="coming_soon"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "❤️ عاشقانه‌ها",
-                callback_data="coming_soon"
+                "🔕 غیرفعال کردن اعلان‌ها",
+                callback_data="notifications_off"
             )
         ]
     ]
 
-    welcome_text = (
-        "🌹 به مدیا پلاس خوش آمدید\n\n"
-        "اینجا دنیایی از فیلم، سریال، اخبار و خدمات متنوع منتظر شماست.\n\n"
-        "با ما همراه باشید و تجربه‌ای متفاوت از محتوا را داشته باشید 🎬✨"
+    await query.message.reply_text(
+
+        "🔔 اطلاع‌رسانی مدیا پلاس\n\n"
+
+        "با فعال کردن اعلان‌ها، هر زمان محتوای جدیدی "
+        "در مدیا پلاس منتشر شود، فقط یک پیام کوتاه "
+        "برای شما ارسال خواهد شد.\n\n"
+
+        f"{status_text}",
+
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
     )
 
-    welcome_photo_file_id = os.getenv("WELCOME_PHOTO_FILE_ID")
 
-    if welcome_photo_file_id:
-        try:
-            await update.message.reply_photo(
-                photo=welcome_photo_file_id,
-                caption=welcome_text,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        except BadRequest as photo_error:
-            print(f"Welcome photo error: {photo_error}")
-            await update.message.reply_text(
-                text=welcome_text,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-    else:
-        await update.message.reply_text(
-            text=welcome_text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
+async def notifications_on(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+
+        await query.answer(
+            "اعلان‌ها فعال شد 🔔"
         )
-    print("START RESPONSE SENT")
 
+    except BadRequest:
+        pass
+
+    user_id = query.from_user.id
+
+    set_notification_status(
+        user_id,
+        True
+    )
+
+    await query.message.reply_text(
+        "🔔 اعلان‌های مدیا پلاس برای شما فعال شد.\n\n"
+        "از این به بعد با انتشار محتوای جدید، "
+        "یک پیام کوتاه برای شما ارسال می‌شود."
+    )
+
+
+async def notifications_off(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+
+        await query.answer(
+            "اعلان‌ها غیرفعال شد 🔕"
+        )
+
+    except BadRequest:
+        pass
+
+    user_id = query.from_user.id
+
+    set_notification_status(
+        user_id,
+        False
+    )
+
+    await query.message.reply_text(
+        "🔕 اعلان‌های مدیا پلاس برای شما غیرفعال شد.\n\n"
+        "هر زمان بخواهید می‌توانید دوباره آن را فعال کنید."
+    )
+
+
+# =========================
+# Coming Soon
+# =========================
 
 async def coming_soon(
     update: Update,
@@ -809,7 +1181,9 @@ async def coming_soon(
     query = update.callback_query
 
     try:
+
         await query.answer()
+
     except BadRequest:
         pass
 
@@ -817,6 +1191,10 @@ async def coming_soon(
         "⏳ این بخش به‌زودی فعال می‌گردد..."
     )
 
+
+# =========================
+# Latest News
+# =========================
 
 async def latest_news(
     update: Update,
@@ -826,13 +1204,13 @@ async def latest_news(
     query = update.callback_query
 
     try:
+
         await query.answer()
+
     except BadRequest:
         pass
 
-
     news_list = get_latest_news()
-
 
     if not news_list:
 
@@ -842,7 +1220,6 @@ async def latest_news(
 
         return
 
-
     for (
         news_id,
         source,
@@ -851,24 +1228,28 @@ async def latest_news(
         photo_file_id
     ) in news_list:
 
-
         caption = (
             f"📰 {title}\n\n"
             f"{text}\n\n"
             f"📌 منبع: {source}"
         )
 
-
         if photo_file_id:
+
             try:
+
                 await query.message.reply_photo(
                     photo=photo_file_id,
                     caption=caption
                 )
+
                 continue
+
             except BadRequest as photo_error:
+
                 print(
-                    f"Invalid news photo file_id for news {news_id}: "
+                    f"Invalid news photo file_id "
+                    f"for news {news_id}: "
                     f"{photo_error}"
                 )
 
@@ -889,7 +1270,9 @@ async def news_menu(
     query = update.callback_query
 
     try:
+
         await query.answer()
+
     except BadRequest:
         pass
 
@@ -935,7 +1318,9 @@ async def news_menu(
     await query.message.reply_text(
         "📰 منابع خبری مدیا پلاس\n\n"
         "یکی از منابع خبری زیر را انتخاب کنید:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
     )
 
 
@@ -943,14 +1328,23 @@ async def news_menu(
 # Movie Section
 # =========================
 
-async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def movies(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     query = update.callback_query
 
     try:
+
         await query.answer()
+
     except BadRequest as e:
-        print("Old/invalid callback query in movies:", e)
+
+        print(
+            "Old/invalid callback query in movies:",
+            e
+        )
 
     user_id = query.from_user.id
 
@@ -974,7 +1368,6 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-
     for (
         content_id,
         message_id,
@@ -987,7 +1380,6 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         poster_file_id
     ) in contents:
 
-
         caption = (
             f"🎬 {title}\n\n"
             f"📅 سال: {year or 'نامشخص'}\n"
@@ -998,7 +1390,6 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{description or 'بدون توضیحات'}"
         )
 
-
         keyboard = [
             [
                 InlineKeyboardButton(
@@ -1007,7 +1398,6 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             ]
         ]
-
 
         if poster_file_id:
 
@@ -1041,9 +1431,15 @@ async def invite_friends(
     query = update.callback_query
 
     try:
+
         await query.answer()
+
     except BadRequest as e:
-        print("Old/invalid callback query in invite:", e)
+
+        print(
+            "Old/invalid callback query in invite:",
+            e
+        )
 
     user_id = query.from_user.id
 
@@ -1094,9 +1490,15 @@ async def check_referrals(
     query = update.callback_query
 
     try:
+
         await query.answer()
+
     except BadRequest as e:
-        print("Old/invalid callback query in check:", e)
+
+        print(
+            "Old/invalid callback query in check:",
+            e
+        )
 
     user_id = query.from_user.id
 
@@ -1150,9 +1552,15 @@ async def send_content(
     query = update.callback_query
 
     try:
+
         await query.answer()
+
     except BadRequest as e:
-        print("Old/invalid callback query in content:", e)
+
+        print(
+            "Old/invalid callback query in content:",
+            e
+        )
 
     user_id = query.from_user.id
 
@@ -1270,22 +1678,21 @@ async def channel_post(
     description = None
     poster_file_id = None
 
-
     # گرفتن پوستر
     if message.photo:
 
         poster_file_id = message.photo[-1].file_id
 
-
     # خواندن کپشن
     text = ""
 
     if message.caption:
+
         text = message.caption
 
     elif message.text:
-        text = message.text
 
+        text = message.text
 
     if text:
 
@@ -1293,7 +1700,6 @@ async def channel_post(
 
         # عنوان = خط اول
         title = lines[0].strip()[:80]
-
 
         # استخراج اطلاعات هوشمند
         for line in lines:
@@ -1309,7 +1715,6 @@ async def channel_post(
                 .strip()
             )
 
-
             if clean_line.startswith("سال"):
 
                 year = (
@@ -1320,7 +1725,6 @@ async def channel_post(
                     .strip()
                 )
 
-
             elif clean_line.startswith("ژانر"):
 
                 genre = (
@@ -1329,7 +1733,6 @@ async def channel_post(
                     .replace("ژانر :", "")
                     .strip()
                 )
-
 
             elif clean_line.startswith("امتیاز"):
 
@@ -1340,7 +1743,6 @@ async def channel_post(
                     .strip()
                 )
 
-
             elif clean_line.startswith("مدت"):
 
                 duration = (
@@ -1349,7 +1751,6 @@ async def channel_post(
                     .replace("مدت :", "")
                     .strip()
                 )
-
 
         # استخراج فقط خلاصه داستان
         summary_lines = []
@@ -1363,7 +1764,7 @@ async def channel_post(
             if line.startswith("خلاصه داستان"):
 
                 in_summary = True
-    
+
                 text_after = (
                     line
                     .replace("خلاصه داستان:", "")
@@ -1372,22 +1773,26 @@ async def channel_post(
                 )
 
                 if text_after:
-                    summary_lines.append(text_after)
+
+                    summary_lines.append(
+                        text_after
+                    )
 
                 continue
 
-
             if in_summary and line:
 
-                summary_lines.append(line)
+                summary_lines.append(
+                    line
+                )
 
+        description = (
+            "\n".join(summary_lines).strip()
+            or None
+        )
 
-        description = "\n".join(
-            summary_lines
-        ).strip() or None
-
-
-    save_content(
+    # ذخیره محتوا و مشخص کردن اینکه واقعاً جدید است
+    is_new_content = save_content(
         message.message_id,
         title,
         poster_file_id,
@@ -1398,11 +1803,24 @@ async def channel_post(
         description
     )
 
-
     print(
-        f"New content saved: "
-        f"{message.message_id} - {title}"
+        f"New content checked: "
+        f"{message.message_id} - {title} "
+        f"(new={is_new_content})"
     )
+
+    # فقط برای محتوای واقعاً جدید اعلان ارسال شود
+    if is_new_content:
+
+        try:
+
+            await notify_new_content()
+
+        except Exception as e:
+
+            print(
+                f"New content notification error: {e}"
+            )
 
 
 # =========================
@@ -1414,9 +1832,19 @@ async def error_handler(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    print("========== BOT ERROR ==========")
-    print("Update:", update)
-    print("Error:", context.error)
+    print(
+        "========== BOT ERROR =========="
+    )
+
+    print(
+        "Update:",
+        update
+    )
+
+    print(
+        "Error:",
+        context.error
+    )
 
     traceback.print_exception(
         type(context.error),
@@ -1424,7 +1852,9 @@ async def error_handler(
         context.error.__traceback__
     )
 
-    print("================================")
+    print(
+        "================================"
+    )
 
 
 # =========================
@@ -1432,22 +1862,32 @@ async def error_handler(
 # =========================
 
 def run_telethon():
+
     async def runner():
+
         try:
+
             await telegram_client.start()
 
             await print_storage_channel_id()
-            
-            print("Telethon connected successfully.")
+
+            print(
+                "Telethon connected successfully."
+            )
 
             await fetch_news_from_telegram()
 
             await news_fetch_loop()
 
         except Exception as e:
-            print(f"Telethon runner error: {e}")
 
-    asyncio.run(runner())
+            print(
+                f"Telethon runner error: {e}"
+            )
+
+    asyncio.run(
+        runner()
+    )
 
 
 # =========================
@@ -1457,27 +1897,35 @@ def run_telethon():
 def main():
 
     if not TOKEN:
+
         raise RuntimeError(
             "BOT_TOKEN is not set"
         )
 
     if not DATABASE_URL:
+
         raise RuntimeError(
             "DATABASE_URL is not set"
         )
 
-    print("Initializing database...")
+    print(
+        "Initializing database..."
+    )
 
     init_database()
 
-    print("Database initialized.")
-    
+    print(
+        "Database initialized."
+    )
+
     threading.Thread(
         target=start_web_server,
         daemon=True
     ).start()
 
-    print("Render health server started.")
+    print(
+        "Render health server started."
+    )
 
     global bot_app
 
@@ -1494,7 +1942,13 @@ def main():
         daemon=True
     ).start()
 
-    print("Telethon runner started.")
+    print(
+        "Telethon runner started."
+    )
+
+    # =========================
+    # Start
+    # =========================
 
     app.add_handler(
         CommandHandler(
@@ -1502,7 +1956,22 @@ def main():
             start
         )
     )
-   
+
+    # =========================
+    # Main Menu
+    # =========================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            main_menu,
+            pattern="^main_menu$"
+        )
+    )
+
+    # =========================
+    # Movies
+    # =========================
+
     app.add_handler(
         CallbackQueryHandler(
             movies,
@@ -1510,26 +1979,67 @@ def main():
         )
     )
 
+    # =========================
+    # News
+    # =========================
+
     app.add_handler(
         CallbackQueryHandler(
             news_menu,
             pattern="^news_menu$"
         )
     )
-    
+
+    # =========================
+    # Coming Soon
+    # =========================
+
     app.add_handler(
         CallbackQueryHandler(
             coming_soon,
             pattern="^coming_soon$"
         )
     )
-    
+
+    # =========================
+    # Notifications
+    # =========================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            notifications,
+            pattern="^notifications$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            notifications_on,
+            pattern="^notifications_on$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            notifications_off,
+            pattern="^notifications_off$"
+        )
+    )
+
+    # =========================
+    # Invite
+    # =========================
+
     app.add_handler(
         CallbackQueryHandler(
             invite_friends,
             pattern="^invite$"
         )
     )
+
+    # =========================
+    # Check Referrals
+    # =========================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -1538,12 +2048,20 @@ def main():
         )
     )
 
+    # =========================
+    # Content
+    # =========================
+
     app.add_handler(
         CallbackQueryHandler(
             send_content,
             pattern="^content_[0-9]+$"
         )
     )
+
+    # =========================
+    # Channel Posts
+    # =========================
 
     app.add_handler(
         MessageHandler(
@@ -1553,14 +2071,22 @@ def main():
         )
     )
 
+    # =========================
+    # Error Handler
+    # =========================
+
     app.add_error_handler(
         error_handler
     )
 
-    print("MediaPlus Bot started...")
-    print("Starting Telegram polling...")
+    print(
+        "MediaPlus Bot started..."
+    )
 
-    
+    print(
+        "Starting Telegram polling..."
+    )
+
     app.run_polling(
         drop_pending_updates=False
     )
