@@ -38,6 +38,12 @@ CONTENT_CHANNEL_ID = -1004485551897
 # نام ربات
 BOT_USERNAME = "Mediapluscenterbot"
 
+# آیدی عددی ادمین برای دریافت درخواست فیلم
+ADMIN_ID = 8093676883
+
+# کاربرانی که در انتظار ارسال عنوان فیلم درخواستی هستند
+pending_movie_requests = set()
+
 # A private chat/channel used only to upload news photos through Bot API.
 # Set this Render environment variable to a chat/channel where the bot has
 # permission to send messages. If it is not set, news text still works.
@@ -936,9 +942,14 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not contents:
 
+        keyboard = [
+            [InlineKeyboardButton("🎥 فیلم درخواستی", callback_data="movie_request")]
+        ]
+
         await query.message.reply_text(
             "🎬 بخش فیلم و سریال\n\n"
-            "هنوز محتوایی اضافه نشده است."
+            "هنوز محتوایی اضافه نشده است.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
         return
@@ -998,9 +1009,77 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     await query.message.reply_text(
-        "🏠 بازگشت به منوی اصلی",
-        reply_markup=get_back_menu_keyboard()
+        "🎥 فیلمی که پیدا نکردید؟ می‌توانید درخواست ارسال کنید.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎥 فیلم درخواستی", callback_data="movie_request")],
+            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+        ])
     )
+
+
+# =========================
+# Movie Request
+# =========================
+
+async def movie_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    user_id = query.from_user.id
+    pending_movie_requests.add(user_id)
+
+    await query.message.reply_text(
+        "🎥 فیلم درخواستی\n\n"
+        "چنانچه فیلم مورد نظر شما در کانال موجود نیست،\n"
+        "عنوان فیلم را همینجا ارسال کنید تا در کوتاه‌ترین زمان ممکن بررسی و برای شما ارسال شود.\n\n"
+        "✍️ لطفاً فقط نام فیلم یا سریال مورد نظر را ارسال کنید."
+    )
+
+
+async def receive_movie_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user or user.id not in pending_movie_requests:
+        return
+
+    movie_title = (update.message.text or "").strip()
+
+    if not movie_title:
+        await update.message.reply_text("❌ لطفاً عنوان فیلم یا سریال را به صورت متنی ارسال کنید.")
+        return
+
+    pending_movie_requests.discard(user.id)
+
+    username = f"@{user.username}" if user.username else "ندارد"
+    first_name = user.first_name or "بدون نام"
+
+    admin_text = (
+        "📥 درخواست جدید فیلم\n\n"
+        f"👤 نام کاربر: {first_name}\n"
+        f"🔹 username: {username}\n"
+        f"🆔 شناسه کاربر: {user.id}\n\n"
+        f"🎬 عنوان درخواست: {movie_title}"
+    )
+
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=admin_text
+        )
+
+        await update.message.reply_text(
+            "✅ درخواست شما دریافت شد.\n\n"
+            "عنوان مورد نظر برای بررسی ارسال شد و در کوتاه‌ترین زمان ممکن پیگیری می‌شود. 🎬"
+        )
+    except Exception as e:
+        print(f"Movie request error: {e}")
+        pending_movie_requests.add(user.id)
+        await update.message.reply_text(
+            "❌ در ارسال درخواست مشکلی پیش آمد. لطفاً چند لحظه بعد دوباره تلاش کنید."
+        )
 
 
 # =========================
@@ -1461,6 +1540,13 @@ def main():
 
     app.add_handler(
         CallbackQueryHandler(
+            movie_request,
+            pattern="^movie_request$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
             latest_news,
             pattern="^latest_news$"
         )
@@ -1497,6 +1583,13 @@ def main():
         CallbackQueryHandler(
             send_content,
             pattern="^content_[0-9]+$"
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            receive_movie_request
         )
     )
 
