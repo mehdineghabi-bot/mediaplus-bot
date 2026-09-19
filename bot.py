@@ -669,6 +669,13 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
+
+
+def get_back_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+    ])
+
 def get_main_keyboard():
     return [
         [InlineKeyboardButton("🎬 فیلم و سریال", callback_data="movies")],
@@ -692,7 +699,7 @@ async def news_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📺 BBC فارسی", url="https://t.me/bbcpersian"), InlineKeyboardButton("📡 ایران اینترنشنال", url="https://t.me/IranintlTV")],
         [InlineKeyboardButton("💰 نرخ طلا و ارز 1", url="https://t.me/NerkhTv1"), InlineKeyboardButton("💵 نرخ طلا و ارز 2", url="https://t.me/DO_L4")]
     ]
-    await query.message.reply_text("📰 منابع خبری مدیا پلاس\n\nمنبع مورد نظر خود را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.message.reply_text("📰 منابع خبری مدیا پلاس\n\nمنبع مورد نظر خود را انتخاب کنید:", reply_markup=get_back_menu_keyboard())
 
 
 # =========================
@@ -835,7 +842,8 @@ async def coming_soon(
         pass
 
     await query.message.reply_text(
-        "⏳ این بخش به‌زودی فعال می‌گردد..."
+        "⏳ این بخش به‌زودی فعال می‌گردد...",
+        reply_markup=get_back_menu_keyboard()
     )
 
 
@@ -987,6 +995,11 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard
                 )
             )
+
+    await query.message.reply_text(
+        "🏠 بازگشت به منوی اصلی",
+        reply_markup=get_back_menu_keyboard()
+    )
 
 
 # =========================
