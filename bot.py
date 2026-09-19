@@ -696,114 +696,8 @@ async def news_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
-# Telethon - دریافت اخبار
+# Telethon news removed - only news links menu is used
 # =========================
-
-NEWS_CHANNELS = [
-    "akharinkhabar"
-]
-
-
-async def fetch_news_from_telegram():
-    try:
-        if not telegram_client.is_connected():
-            await telegram_client.connect()
-
-        if not await telegram_client.is_user_authorized():
-            print("Telethon: User is not authorized.")
-            return
-
-        if not NEWS_STORAGE_CHAT_ID:
-            print(
-                "Telethon: NEWS_STORAGE_CHAT_ID is not set; "
-                "news photos will not be stored."
-            )
-
-        for channel in NEWS_CHANNELS:
-
-            messages = await telegram_client.get_messages(
-                channel,
-                limit=20
-            )
-
-            for message in messages:
-
-                if not message or not message.message:
-                    continue
-
-                news_text = message.message.strip()
-
-                lines = news_text.split("\n", 1)
-
-                title = lines[0][:250].strip()
-
-                body = (
-                    lines[1].strip()
-                    if len(lines) > 1
-                    else news_text
-                )
-
-                photo_file_id = get_news_photo_file_id(
-                    channel,
-                    message.id
-                )
-
-                # Upload each news photo only once and reuse the Bot API
-                # file_id on later 5-minute polling cycles.
-                if (
-                    not photo_file_id
-                    and message.photo
-                    and NEWS_STORAGE_CHAT_ID
-                    and bot_app
-                ):
-                    try:
-                        photo_bytes = await telegram_client.download_media(
-                            message,
-                            file=bytes
-                        )
-
-                        if photo_bytes:
-                            sent = await bot_app.bot.send_photo(
-                                chat_id=NEWS_STORAGE_CHAT_ID,
-                                photo=photo_bytes
-                            )
-                            if sent.photo:
-                                photo_file_id = sent.photo[-1].file_id
-
-                    except Exception as photo_error:
-                        print(
-                            f"News photo error for message "
-                            f"{message.id}: {photo_error}"
-                        )
-
-                save_news(
-                    source=channel,
-                    title=title,
-                    text=body,
-                    photo_file_id=photo_file_id,
-                    telegram_message_id=message.id
-                )
-
-                print(
-                    f"News checked: {channel} / message_id={message.id} / "
-                    f"title={title[:80]}"
-                )
-
-        print("Telethon: News fetched successfully.")
-
-    except Exception as e:
-        print(f"Telethon news error: {e}")
-
-
-async def news_fetch_loop():
-    while True:
-        try:
-            await fetch_news_from_telegram()
-        except Exception as e:
-            print(f"News loop error: {e}")
-
-        # Check for new posts every 5 minutes.
-        await asyncio.sleep(300)
 
 
 # =========================
@@ -1494,25 +1388,7 @@ async def error_handler(
     print("================================")
 
 
-# =========================
-# Telethon Runner
-# =========================
-
-def run_telethon():
-    async def runner():
-        try:
-            await telegram_client.start()
-
-            print("Telethon connected successfully.")
-
-            await fetch_news_from_telegram()
-
-            await news_fetch_loop()
-
-        except Exception as e:
-            print(f"Telethon runner error: {e}")
-
-    asyncio.run(runner())
+# Telethon Runner removed
 
 
 # =========================
@@ -1554,12 +1430,6 @@ def main():
 
     bot_app = app
 
-    threading.Thread(
-        target=run_telethon,
-        daemon=True
-    ).start()
-
-    print("Telethon runner started.")
 
     app.add_handler(
         CommandHandler(
