@@ -699,7 +699,8 @@ async def news_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📺 BBC فارسی", url="https://t.me/bbcpersian"), InlineKeyboardButton("📡 ایران اینترنشنال", url="https://t.me/IranintlTV")],
         [InlineKeyboardButton("💰 نرخ طلا و ارز 1", url="https://t.me/NerkhTv1"), InlineKeyboardButton("💵 نرخ طلا و ارز 2", url="https://t.me/DO_L4")]
     ]
-    await query.message.reply_text("📰 منابع خبری مدیا پلاس\n\nمنبع مورد نظر خود را انتخاب کنید:", reply_markup=get_back_menu_keyboard())
+    keyboard.append([InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")])
+    await query.message.reply_text("📰 منابع خبری مدیا پلاس\n\nمنبع مورد نظر خود را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # =========================
