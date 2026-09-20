@@ -1065,9 +1065,13 @@ async def receive_movie_request(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
     try:
+        user_link = f"tg://user?id={user.id}"
+        keyboard = [[InlineKeyboardButton("👤 باز کردن پروفایل کاربر", url=user_link)]]
+
         await context.bot.send_message(
             chat_id=ADMIN_ID,
-            text=admin_text
+            text=admin_text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
         await update.message.reply_text(
