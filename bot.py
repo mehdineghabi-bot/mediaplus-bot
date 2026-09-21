@@ -998,11 +998,11 @@ async def show_movie_page(message, contents, index):
         ],
         [
            InlineKeyboardButton(
-               "بعدی ▶️",
+               "بعدی ◀️",
                callback_data=f"movie_page_{index + 1}"
            ),
            InlineKeyboardButton(
-               "◀️ قبلی",
+               "▶️ قبلی",
                callback_data=f"movie_page_{index - 1}"
            )
         ],
@@ -1112,11 +1112,11 @@ async def movie_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton(
-                "بعدی ▶️",
+                "بعدی ◀️",
                 callback_data=f"movie_page_{index + 1}"
             ),
             InlineKeyboardButton(
-                "◀️ قبلی",
+                "▶️ قبلی",
                 callback_data=f"movie_page_{index - 1}"
             )
         ],
