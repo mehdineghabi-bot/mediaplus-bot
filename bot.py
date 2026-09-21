@@ -913,7 +913,6 @@ async def latest_news(
         )
 
 
-
 # =========================
 # Movie Section
 # =========================
@@ -924,14 +923,12 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await query.answer()
-    except BadRequest as e:
-        print("Old/invalid callback query in movies:", e)
+    except BadRequest:
+        pass
 
     user_id = query.from_user.id
 
-    print(
-        f"MOVIES BUTTON CLICKED BY USER: {user_id}"
-    )
+    print(f"MOVIES BUTTON CLICKED BY USER: {user_id}")
 
     user = get_user(user_id)
 
@@ -941,9 +938,9 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contents = get_contents()
 
     if not contents:
-
         keyboard = [
-            [InlineKeyboardButton("🎥 فیلم درخواستی", callback_data="movie_request")]
+            [InlineKeyboardButton("🎥 فیلم درخواستی", callback_data="movie_request")],
+            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
         ]
 
         await query.message.reply_text(
@@ -951,11 +948,25 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "هنوز محتوایی اضافه نشده است.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-
         return
 
+    # نمایش اولین فیلم
+    await show_movie_page(
+        query.message,
+        contents,
+        0
+    )
 
-    for (
+
+async def show_movie_page(message, contents, index):
+
+    if index < 0:
+        index = len(contents) - 1
+
+    if index >= len(contents):
+        index = 0
+
+    (
         content_id,
         message_id,
         title,
@@ -965,56 +976,191 @@ async def movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         duration,
         description,
         poster_file_id
-    ) in contents:
+    ) = contents[index]
 
+    caption = (
+        f"🎬 {title}\n\n"
+        f"📅 سال: {year or 'نامشخص'}\n"
+        f"🎭 ژانر: {genre or 'نامشخص'}\n"
+        f"⭐ امتیاز: {rating or 'نامشخص'}\n"
+        f"⏱ مدت: {duration or 'نامشخص'}\n\n"
+        f"📝 خلاصه:\n"
+        f"{description or 'بدون توضیحات'}\n\n"
+        f"📄 صفحه {index + 1} از {len(contents)}"
+    )
 
-        caption = (
-            f"🎬 {title}\n\n"
-            f"📅 سال: {year or 'نامشخص'}\n"
-            f"🎭 ژانر: {genre or 'نامشخص'}\n"
-            f"⭐ امتیاز: {rating or 'نامشخص'}\n"
-            f"⏱ مدت: {duration or 'نامشخص'}\n\n"
-            f"📝 خلاصه:\n"
-            f"{description or 'بدون توضیحات'}"
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "⬇️ دانلود",
+                callback_data=f"content_{content_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "◀️ قبلی",
+                callback_data=f"movie_page_{index - 1}"
+            ),
+            InlineKeyboardButton(
+                "بعدی ▶️",
+                callback_data=f"movie_page_{index + 1}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎥 فیلم درخواستی",
+                callback_data="movie_request"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 منوی اصلی",
+                callback_data="main_menu"
+            )
+        ]
+    ]
+
+    markup = InlineKeyboardMarkup(keyboard)
+
+    if poster_file_id:
+
+        try:
+            await message.reply_photo(
+                photo=poster_file_id,
+                caption=caption,
+                reply_markup=markup
+            )
+        except BadRequest:
+            await message.reply_text(
+                caption,
+                reply_markup=markup
+            )
+
+    else:
+
+        await message.reply_text(
+            caption,
+            reply_markup=markup
         )
 
 
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "⬇️ دانلود",
-                    callback_data=f"content_{content_id}"
-                )
-            ]
+async def movie_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    try:
+        index = int(
+            query.data.replace(
+                "movie_page_",
+                ""
+            )
+        )
+    except ValueError:
+        return
+
+    contents = get_contents()
+
+    if not contents:
+        await query.message.reply_text(
+            "🎬 محتوایی برای نمایش وجود ندارد.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+            ])
+        )
+        return
+
+    if index < 0:
+        index = len(contents) - 1
+
+    if index >= len(contents):
+        index = 0
+
+    (
+        content_id,
+        message_id,
+        title,
+        year,
+        genre,
+        rating,
+        duration,
+        description,
+        poster_file_id
+    ) = contents[index]
+
+    caption = (
+        f"🎬 {title}\n\n"
+        f"📅 سال: {year or 'نامشخص'}\n"
+        f"🎭 ژانر: {genre or 'نامشخص'}\n"
+        f"⭐ امتیاز: {rating or 'نامشخص'}\n"
+        f"⏱ مدت: {duration or 'نامشخص'}\n\n"
+        f"📝 خلاصه:\n"
+        f"{description or 'بدون توضیحات'}\n\n"
+        f"📄 صفحه {index + 1} از {len(contents)}"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "⬇️ دانلود",
+                callback_data=f"content_{content_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "◀️ قبلی",
+                callback_data=f"movie_page_{index - 1}"
+            ),
+            InlineKeyboardButton(
+                "بعدی ▶️",
+                callback_data=f"movie_page_{index + 1}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎥 فیلم درخواستی",
+                callback_data="movie_request"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 منوی اصلی",
+                callback_data="main_menu"
+            )
         ]
+    ]
 
+    markup = InlineKeyboardMarkup(keyboard)
 
-        if poster_file_id:
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
 
+    if poster_file_id:
+
+        try:
             await query.message.reply_photo(
                 photo=poster_file_id,
                 caption=caption,
-                reply_markup=InlineKeyboardMarkup(
-                    keyboard
-                )
+                reply_markup=markup
             )
-
-        else:
-
+        except BadRequest:
             await query.message.reply_text(
                 caption,
-                reply_markup=InlineKeyboardMarkup(
-                    keyboard
-                )
+                reply_markup=markup
             )
 
-    await query.message.reply_text(
-        "🎥 فیلمی که پیدا نکردید؟ می‌توانید درخواست ارسال کنید.",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎥 فیلم درخواستی", callback_data="movie_request")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
-        ])
-    )
+    else:
+
+        await query.message.reply_text(
+            caption,
+            reply_markup=markup
+        )
 
 
 # =========================
@@ -1542,6 +1688,13 @@ def main():
         )
     )
 
+    app.add_handler(
+        CallbackQueryHandler(
+            movie_page,
+            pattern="^movie_page_-?[0-9]+$"
+        )
+    )
+    
     app.add_handler(
         CallbackQueryHandler(
             movie_request,
