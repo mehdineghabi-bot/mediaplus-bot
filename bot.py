@@ -1015,6 +1015,29 @@ async def music_admin(
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+async def music_add(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    if query.from_user.id != ADMIN_ID:
+        await query.message.reply_text(
+            "⛔ شما دسترسی به این بخش را ندارید."
+        )
+        return
+
+    await query.message.reply_text(
+        "➕ افزودن آهنگ\n\n"
+        "لطفاً پوستر آهنگ را به صورت عکس ارسال کنید."
+    )
+    
 async def latest_news(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -1855,7 +1878,14 @@ def main():
             pattern="^music_admin$"
         )
     )
-    
+
+    app.add_handler(
+        CallbackQueryHandler(
+            music_add,
+            pattern="^music_add$"
+        )
+    )
+
     app.add_handler(
         CallbackQueryHandler(
             movies,
