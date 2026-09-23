@@ -1,15 +1,21 @@
 import os
 import threading
 import traceback
-import asyncio
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from datetime import datetime
 
 import psycopg
+
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+
 from telegram.error import BadRequest
+
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -19,6 +25,11 @@ from telegram.ext import (
     filters,
 )
 
+
+# ============================================================
+# Environment
+# ============================================================
+
 TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -26,67 +37,111 @@ API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH")
 TELEGRAM_SESSION = os.getenv("TELEGRAM_SESSION")
 
+
+# ============================================================
+# Telethon
+# ============================================================
+
 telegram_client = TelegramClient(
     StringSession(TELEGRAM_SESSION),
     API_ID,
     API_HASH
 )
 
-# کانال خصوصی محتوای MediaPlus
+
+# ============================================================
+# Constants
+# ============================================================
+
 CONTENT_CHANNEL_ID = -1004485551897
 
-# نام ربات
 BOT_USERNAME = "Mediapluscenterbot"
 
-# آیدی عددی ادمین
 ADMIN_ID = 8093676883
 
-# کاربرانی که در انتظار ارسال عنوان فیلم درخواستی هستند
+
+# ============================================================
+# Temporary states
+# ============================================================
+
 pending_movie_requests = set()
 
-# اطلاعات موقت آهنگی که ادمین در حال افزودن آن است
 pending_music_add = {}
 
-# کانال ذخیره اخبار - فعلاً استفاده نمی‌شود
-NEWS_STORAGE_CHAT_ID = os.getenv("NEWS_STORAGE_CHAT_ID")
 
-# Global Application reference
+# ============================================================
+# News storage
+# ============================================================
+
+NEWS_STORAGE_CHAT_ID = os.getenv(
+    "NEWS_STORAGE_CHAT_ID"
+)
+
+
+# ============================================================
+# Global application
+# ============================================================
+
 bot_app = None
 
 
-# =========================
+# ============================================================
 # Render Health Server
-# =========================
+# ============================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
+
         self.send_response(200)
+
         self.end_headers()
-        self.wfile.write(b"MediaPlus Bot is running")
+
+        self.wfile.write(
+            b"MediaPlus Bot is running"
+        )
 
     def log_message(self, format, *args):
         pass
 
 
 def start_web_server():
-    port = int(os.getenv("PORT", "10000"))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+
+    port = int(
+        os.getenv(
+            "PORT",
+            "10000"
+        )
+    )
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler
+    )
+
     server.serve_forever()
 
 
-# =========================
+# ============================================================
 # Database
-# =========================
+# ============================================================
 
 def db_connection():
-    return psycopg.connect(DATABASE_URL)
+
+    return psycopg.connect(
+        DATABASE_URL
+    )
 
 
 def init_database():
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
+
+            # ------------------------------------------------
+            # Users
+            # ------------------------------------------------
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -99,6 +154,10 @@ def init_database():
                 )
             """)
 
+            # ------------------------------------------------
+            # Referrals
+            # ------------------------------------------------
+
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS referrals (
                     id SERIAL PRIMARY KEY,
@@ -107,6 +166,10 @@ def init_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # ------------------------------------------------
+            # Contents
+            # ------------------------------------------------
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS contents (
@@ -123,6 +186,10 @@ def init_database():
                 )
             """)
 
+            # ------------------------------------------------
+            # Music
+            # ------------------------------------------------
+
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS music (
                     id SERIAL PRIMARY KEY,
@@ -133,6 +200,10 @@ def init_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # ------------------------------------------------
+            # News
+            # ------------------------------------------------
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS news (
@@ -165,6 +236,10 @@ def init_database():
                 ON news(source, telegram_message_id)
             """)
 
+            # ------------------------------------------------
+            # Notifications
+            # ------------------------------------------------
+
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS notification_settings (
                     user_id BIGINT PRIMARY KEY,
@@ -173,6 +248,10 @@ def init_database():
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # ------------------------------------------------
+            # Content columns
+            # ------------------------------------------------
 
             cur.execute("""
                 ALTER TABLE contents
@@ -207,13 +286,18 @@ def init_database():
         conn.commit()
 
 
-# =========================
+# ============================================================
 # Users
-# =========================
+# ============================================================
 
-def save_user(user_id, username, first_name):
+def save_user(
+    user_id,
+    username,
+    first_name
+):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -240,6 +324,7 @@ def save_user(user_id, username, first_name):
 def get_user(user_id):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -249,14 +334,20 @@ def get_user(user_id):
                     verified
                 FROM users
                 WHERE user_id = %s
-            """, (user_id,))
+            """, (
+                user_id,
+            ))
 
             return cur.fetchone()
 
 
-def set_invite_link(user_id, invite_link):
+def set_invite_link(
+    user_id,
+    invite_link
+):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -271,34 +362,45 @@ def set_invite_link(user_id, invite_link):
         conn.commit()
 
 
-# =========================
+# ============================================================
 # Referrals
-# =========================
+# ============================================================
 
-def add_referral(inviter_id, referred_id):
+def add_referral(
+    inviter_id,
+    referred_id
+):
 
     if inviter_id == referred_id:
+
         return False
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
                 SELECT 1
                 FROM referrals
                 WHERE referred_id = %s
-            """, (referred_id,))
+            """, (
+                referred_id,
+            ))
 
             if cur.fetchone():
+
                 return False
 
             cur.execute("""
                 SELECT 1
                 FROM users
                 WHERE user_id = %s
-            """, (inviter_id,))
+            """, (
+                inviter_id,
+            ))
 
             if not cur.fetchone():
+
                 return False
 
             cur.execute("""
@@ -316,7 +418,9 @@ def add_referral(inviter_id, referred_id):
                 SELECT COUNT(*)
                 FROM referrals
                 WHERE inviter_id = %s
-            """, (inviter_id,))
+            """, (
+                inviter_id,
+            ))
 
             count = cur.fetchone()[0]
 
@@ -326,7 +430,9 @@ def add_referral(inviter_id, referred_id):
                     UPDATE users
                     SET verified = TRUE
                     WHERE user_id = %s
-                """, (inviter_id,))
+                """, (
+                    inviter_id,
+                ))
 
         conn.commit()
 
@@ -336,20 +442,23 @@ def add_referral(inviter_id, referred_id):
 def get_referral_count(user_id):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
                 SELECT COUNT(*)
                 FROM referrals
                 WHERE inviter_id = %s
-            """, (user_id,))
+            """, (
+                user_id,
+            ))
 
             return cur.fetchone()[0]
 
 
-# =========================
+# ============================================================
 # Contents Database
-# =========================
+# ============================================================
 
 def save_content(
     message_id,
@@ -363,15 +472,19 @@ def save_content(
 ):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
                 SELECT 1
                 FROM contents
                 WHERE title = %s
-            """, (title,))
+            """, (
+                title,
+            ))
 
             if cur.fetchone():
+
                 return False
 
             cur.execute("""
@@ -415,6 +528,7 @@ def save_content(
 def get_contents():
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -439,6 +553,7 @@ def get_contents():
 def clear_contents():
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -448,25 +563,30 @@ def clear_contents():
         conn.commit()
 
 
-def get_content_message_id(content_id):
+def get_content_message_id(
+    content_id
+):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
                 SELECT message_id
                 FROM contents
                 WHERE id = %s
-            """, (content_id,))
+            """, (
+                content_id,
+            ))
 
             row = cur.fetchone()
 
             return row[0] if row else None
 
 
-# =========================
+# ============================================================
 # Music Database
-# =========================
+# ============================================================
 
 def save_music(
     title,
@@ -476,6 +596,7 @@ def save_music(
 ):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -499,6 +620,7 @@ def save_music(
 def get_music():
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -516,22 +638,30 @@ def get_music():
             return cur.fetchall()
 
 
-def delete_music(music_id):
+def delete_music(
+    music_id
+):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
                 DELETE FROM music
                 WHERE id = %s
-            """, (music_id,))
+            """, (
+                music_id,
+            ))
 
         conn.commit()
 
 
-def get_music_by_id(music_id):
+def get_music_by_id(
+    music_id
+):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -543,14 +673,16 @@ def get_music_by_id(music_id):
                     download_url
                 FROM music
                 WHERE id = %s
-            """, (music_id,))
+            """, (
+                music_id,
+            ))
 
             return cur.fetchone()
 
 
-# =========================
+# ============================================================
 # News Database
-# =========================
+# ============================================================
 
 def save_news(
     source,
@@ -561,6 +693,7 @@ def save_news(
 ):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             if telegram_message_id is not None:
@@ -575,6 +708,7 @@ def save_news(
                         telegram_message_id
                     )
                     VALUES (%s,%s,%s,%s,%s)
+
                     ON CONFLICT (source, telegram_message_id)
                     DO UPDATE SET
                         title = EXCLUDED.title,
@@ -618,13 +752,14 @@ def get_news_photo_file_id(
 ):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
                 SELECT photo_file_id
                 FROM news
                 WHERE source = %s
-                  AND telegram_message_id = %s
+                AND telegram_message_id = %s
                 LIMIT 1
             """, (
                 source,
@@ -639,6 +774,7 @@ def get_news_photo_file_id(
 def get_latest_news():
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -656,9 +792,9 @@ def get_latest_news():
             return cur.fetchall()
 
 
-# =========================
+# ============================================================
 # Notifications
-# =========================
+# ============================================================
 
 def set_notification_status(
     user_id,
@@ -666,6 +802,7 @@ def set_notification_status(
 ):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -687,16 +824,21 @@ def set_notification_status(
         conn.commit()
 
 
-def get_notification_status(user_id):
+def get_notification_status(
+    user_id
+):
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
                 SELECT enabled
                 FROM notification_settings
                 WHERE user_id = %s
-            """, (user_id,))
+            """, (
+                user_id,
+            ))
 
             row = cur.fetchone()
 
@@ -706,6 +848,7 @@ def get_notification_status(user_id):
 def get_notification_users():
 
     with db_connection() as conn:
+
         with conn.cursor() as cur:
 
             cur.execute("""
@@ -750,6 +893,12 @@ async def notifications(
                 "🔕 غیرفعال کردن اعلان‌ها",
                 callback_data="notifications_off"
             )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 منوی اصلی",
+                callback_data="main_menu"
+            )
         ]
     ]
 
@@ -792,7 +941,8 @@ async def notifications_on(
     await query.message.reply_text(
         "🔔 اعلان‌های مدیا پلاس برای شما فعال شد.\n\n"
         "از این به بعد با انتشار محتوای جدید، "
-        "یک پیام کوتاه برای شما ارسال می‌شود."
+        "یک پیام کوتاه برای شما ارسال می‌شود.",
+        reply_markup=get_back_menu_keyboard()
     )
 
 
@@ -815,7 +965,8 @@ async def notifications_off(
 
     await query.message.reply_text(
         "🔕 اعلان‌های مدیا پلاس برای شما غیرفعال شد.\n\n"
-        "هر زمان بخواهید می‌توانید دوباره آن را فعال کنید."
+        "هر زمان بخواهید می‌توانید دوباره آن را فعال کنید.",
+        reply_markup=get_back_menu_keyboard()
     )
 
 
@@ -856,9 +1007,63 @@ async def notify_new_content(
             )
 
 
-# =========================
+# ============================================================
 # Main Menu
-# =========================
+# ============================================================
+
+def get_main_keyboard():
+
+    return [
+        [
+            InlineKeyboardButton(
+                "🎬 فیلم و سریال",
+                callback_data="movies"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📰 آخرین اخبار",
+                callback_data="news_menu"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "₿ دنیای ارز دیجیتال",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🎵 موسیقی",
+                callback_data="music"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❤️ عاشقانه‌ها",
+                callback_data="coming_soon"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔔 منو باخبر کن",
+                callback_data="notifications"
+            )
+        ]
+    ]
+
+
+def get_back_menu_keyboard():
+
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "🏠 منوی اصلی",
+                callback_data="main_menu"
+            )
+        ]
+    ])
+
 
 async def main_menu(
     update: Update,
@@ -914,63 +1119,9 @@ async def main_menu(
     )
 
 
-def get_back_menu_keyboard():
-
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "🏠 منوی اصلی",
-                callback_data="main_menu"
-            )
-        ]
-    ])
-
-
-def get_main_keyboard():
-
-    return [
-        [
-            InlineKeyboardButton(
-                "🎬 فیلم و سریال",
-                callback_data="movies"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📰 آخرین اخبار",
-                callback_data="news_menu"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "₿ دنیای ارز دیجیتال",
-                callback_data="coming_soon"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🎵 موسیقی",
-                callback_data="coming_soon"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "❤️ عاشقانه‌ها",
-                callback_data="coming_soon"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🔔 منو باخبر کن",
-                callback_data="notifications"
-            )
-        ]
-    ]
-
-
-# =========================
+# ============================================================
 # News Menu
-# =========================
+# ============================================================
 
 async def news_menu(
     update: Update,
@@ -1038,16 +1189,18 @@ async def news_menu(
     )
 
 
-# =========================
+# ============================================================
 # Start + Referral
-# =========================
+# ============================================================
 
 async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    print("START COMMAND RECEIVED")
+    print(
+        "START COMMAND RECEIVED"
+    )
 
     user = update.effective_user
 
@@ -1059,11 +1212,6 @@ async def start(
 
         return
 
-    print(
-        f"START FROM USER: {user.id} "
-        f"@{user.username or 'no_username'}"
-    )
-
     save_user(
         user.id,
         user.username,
@@ -1073,10 +1221,6 @@ async def start(
     if context.args:
 
         referral_code = context.args[0]
-
-        print(
-            f"REFERRAL CODE RECEIVED: {referral_code}"
-        )
 
         if referral_code.startswith("ref_"):
 
@@ -1186,12 +1330,14 @@ async def start(
             )
         )
 
-    print("START RESPONSE SENT")
+    print(
+        "START RESPONSE SENT"
+    )
 
 
-# =========================
+# ============================================================
 # Coming Soon
-# =========================
+# ============================================================
 
 async def coming_soon(
     update: Update,
@@ -1211,9 +1357,9 @@ async def coming_soon(
     )
 
 
-# =========================
+# ============================================================
 # Admin Panel
-# =========================
+# ============================================================
 
 async def admin_panel(
     update: Update,
@@ -1254,9 +1400,48 @@ async def admin_panel(
     )
 
 
-# =========================
-# Music Admin
-# =========================
+async def admin_back(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    if query.from_user.id != ADMIN_ID:
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎵 مدیریت موسیقی",
+                callback_data="music_admin"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 منوی اصلی",
+                callback_data="main_menu"
+            )
+        ]
+    ]
+
+    await query.message.reply_text(
+        "⚙️ پنل مدیریت مدیا پلاس\n\n"
+        "لطفاً بخش موردنظر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
+
+# ============================================================
+# Music Admin Menu
+# ============================================================
 
 async def music_admin(
     update: Update,
@@ -1308,9 +1493,9 @@ async def music_admin(
     )
 
 
-# =========================
+# ============================================================
 # Add Music
-# =========================
+# ============================================================
 
 async def music_add(
     update: Update,
@@ -1338,13 +1523,14 @@ async def music_add(
 
     await query.message.reply_text(
         "➕ افزودن آهنگ\n\n"
-        "لطفاً پوستر آهنگ را به صورت عکس ارسال کنید."
+        "لطفاً پوستر آهنگ را به صورت عکس ارسال کنید.\n\n"
+        "بعد از پوستر، لینک مستقیم فایل MP3 را ارسال خواهید کرد."
     )
 
 
-# =========================
+# ============================================================
 # Receive Music Poster
-# =========================
+# ============================================================
 
 async def receive_music_poster(
     update: Update,
@@ -1374,9 +1560,9 @@ async def receive_music_poster(
     )
 
 
-# =========================
-# Music Info Keyboard
-# =========================
+# ============================================================
+# Music Confirm Keyboard
+# ============================================================
 
 def get_music_confirm_keyboard():
 
@@ -1402,9 +1588,40 @@ def get_music_confirm_keyboard():
     ])
 
 
-# =========================
-# Receive Music URL
-# =========================
+# ============================================================
+# Music Info Message
+# ============================================================
+
+def build_music_info_text(data):
+
+    artist = data.get(
+        "artist",
+        ""
+    )
+
+    title = data.get(
+        "title",
+        ""
+    )
+
+    url = data.get(
+        "download_url",
+        ""
+    )
+
+    return (
+        "🎵 اطلاعات آهنگ\n\n"
+        f"🎤 خواننده: {artist or 'نامشخص'}\n"
+        f"🎼 عنوان: {title or 'نامشخص'}\n\n"
+        "🔗 لینک آهنگ:\n"
+        f"{url}\n\n"
+        "لطفاً اطلاعات را بررسی کنید."
+    )
+
+
+# ============================================================
+# Receive Music URL / Edit
+# ============================================================
 
 async def receive_music_url(
     update: Update,
@@ -1424,9 +1641,9 @@ async def receive_music_url(
 
     data = pending_music_add[user.id]
 
-    # =========================
-    # حالت اصلاح اطلاعات
-    # =========================
+    # --------------------------------------------------------
+    # Editing
+    # --------------------------------------------------------
 
     if data.get("editing"):
 
@@ -1464,19 +1681,18 @@ async def receive_music_url(
         data["title"] = title
         data["editing"] = False
 
+        # لینک قبلی حفظ می‌شود و دوباره نمایش داده می‌شود
+
         await update.message.reply_text(
-            "🎵 اطلاعات آهنگ اصلاح شد.\n\n"
-            f"🎤 خواننده: {artist}\n"
-            f"🎼 عنوان: {title}\n\n"
-            "اگر اطلاعات صحیح است، تأیید و ذخیره را بزنید.",
+            build_music_info_text(data),
             reply_markup=get_music_confirm_keyboard()
         )
 
         return
 
-    # =========================
-    # دریافت لینک MP3
-    # =========================
+    # --------------------------------------------------------
+    # Receive MP3 URL
+    # --------------------------------------------------------
 
     url = update.message.text.strip()
 
@@ -1501,7 +1717,10 @@ async def receive_music_url(
 
         return
 
-    from urllib.parse import unquote, urlparse
+    from urllib.parse import (
+        unquote,
+        urlparse
+    )
 
     filename = unquote(
         os.path.basename(
@@ -1548,17 +1767,14 @@ async def receive_music_url(
     })
 
     await update.message.reply_text(
-        "🎵 اطلاعات آهنگ دریافت شد.\n\n"
-        f"🎤 خواننده: {artist or 'نامشخص'}\n"
-        f"🎼 عنوان: {title or 'نامشخص'}\n\n"
-        "لطفاً اطلاعات را بررسی کنید.",
+        build_music_info_text(data),
         reply_markup=get_music_confirm_keyboard()
     )
 
 
-# =========================
+# ============================================================
 # Edit Music Info
-# =========================
+# ============================================================
 
 async def music_edit_info(
     update: Update,
@@ -1598,9 +1814,9 @@ async def music_edit_info(
     )
 
 
-# =========================
+# ============================================================
 # Confirm Music Add
-# =========================
+# ============================================================
 
 async def music_confirm_add(
     update: Update,
@@ -1679,14 +1895,16 @@ async def music_confirm_add(
             download_url=download_url
         )
 
-        del pending_music_add[
-            user.id
-        ]
+        pending_music_add.pop(
+            user.id,
+            None
+        )
 
         await query.message.reply_text(
             "✅ آهنگ با موفقیت ذخیره شد.\n\n"
             f"🎤 خواننده: {artist or 'نامشخص'}\n"
-            f"🎼 عنوان: {title}"
+            f"🎼 عنوان: {title}\n\n"
+            "🎵 آهنگ به بخش موسیقی اضافه شد."
         )
 
     except Exception as e:
@@ -1702,9 +1920,9 @@ async def music_confirm_add(
         )
 
 
-# =========================
+# ============================================================
 # Cancel Music Add
-# =========================
+# ============================================================
 
 async def music_cancel_add(
     update: Update,
@@ -1729,13 +1947,403 @@ async def music_cancel_add(
     )
 
     await query.message.reply_text(
-        "❌ افزودن آهنگ لغو شد."
+        "❌ افزودن آهنگ لغو شد.",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🎵 مدیریت موسیقی",
+                    callback_data="music_admin"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 منوی اصلی",
+                    callback_data="main_menu"
+                )
+            ]
+        ])
     )
 
 
-# =========================
+# ============================================================
+# Music User Section
+# ============================================================
+
+async def music(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    music_list = get_music()
+
+    if not music_list:
+
+        await query.message.reply_text(
+            "🎵 موسیقی مدیا پلاس\n\n"
+            "هنوز آهنگی برای نمایش اضافه نشده است.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🏠 منوی اصلی",
+                        callback_data="main_menu"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    await show_music_page(
+        query.message,
+        music_list,
+        0
+    )
+
+
+# ============================================================
+# Show Music Page
+# ============================================================
+
+async def show_music_page(
+    message,
+    music_list,
+    index
+):
+
+    if not music_list:
+
+        await message.reply_text(
+            "🎵 هنوز آهنگی موجود نیست.",
+            reply_markup=get_back_menu_keyboard()
+        )
+
+        return
+
+    if index < 0:
+
+        index = len(music_list) - 1
+
+    if index >= len(music_list):
+
+        index = 0
+
+    (
+        music_id,
+        title,
+        artist,
+        poster_file_id,
+        download_url
+    ) = music_list[index]
+
+    caption = (
+        "🎵 موسیقی مدیا پلاس\n\n"
+        f"🎤 خواننده: {artist or 'نامشخص'}\n"
+        f"🎼 عنوان: {title or 'نامشخص'}\n\n"
+        f"📄 صفحه {index + 1} از {len(music_list)}"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎧 گوش دادن",
+                url=download_url
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⬇️ دانلود آهنگ",
+                url=download_url
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "◀️ قبلی",
+                callback_data=f"music_page_{index - 1}"
+            ),
+            InlineKeyboardButton(
+                "بعدی ▶️",
+                callback_data=f"music_page_{index + 1}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 منوی اصلی",
+                callback_data="main_menu"
+            )
+        ]
+    ]
+
+    markup = InlineKeyboardMarkup(
+        keyboard
+    )
+
+    if poster_file_id:
+
+        try:
+
+            await message.reply_photo(
+                photo=poster_file_id,
+                caption=caption,
+                reply_markup=markup
+            )
+
+            return
+
+        except BadRequest as e:
+
+            print(
+                "Music poster error:",
+                e
+            )
+
+    await message.reply_text(
+        caption,
+        reply_markup=markup
+    )
+
+
+# ============================================================
+# Music Page
+# ============================================================
+
+async def music_page(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    try:
+
+        index = int(
+            query.data.replace(
+                "music_page_",
+                ""
+            )
+        )
+
+    except ValueError:
+
+        return
+
+    music_list = get_music()
+
+    if not music_list:
+
+        await query.message.reply_text(
+            "🎵 آهنگی برای نمایش وجود ندارد.",
+            reply_markup=get_back_menu_keyboard()
+        )
+
+        return
+
+    if index < 0:
+
+        index = len(music_list) - 1
+
+    if index >= len(music_list):
+
+        index = 0
+
+    try:
+
+        await query.message.delete()
+
+    except Exception:
+
+        pass
+
+    await show_music_page(
+        query.message,
+        music_list,
+        index
+    )
+
+
+# ============================================================
+# Music Delete Menu
+# ============================================================
+
+async def music_delete(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    if query.from_user.id != ADMIN_ID:
+
+        await query.message.reply_text(
+            "⛔ شما دسترسی به این بخش را ندارید."
+        )
+
+        return
+
+    music_list = get_music()
+
+    if not music_list:
+
+        await query.message.reply_text(
+            "🗑 حذف آهنگ\n\n"
+            "هنوز هیچ آهنگی ثبت نشده است.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🎵 مدیریت موسیقی",
+                        callback_data="music_admin"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    keyboard = []
+
+    for (
+        music_id,
+        title,
+        artist,
+        poster_file_id,
+        download_url
+    ) in music_list:
+
+        label = (
+            f"🗑 {artist + ' - ' if artist else ''}"
+            f"{title}"
+        )
+
+        keyboard.append([
+            InlineKeyboardButton(
+                label[:60],
+                callback_data=f"music_delete_{music_id}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "↩️ مدیریت موسیقی",
+            callback_data="music_admin"
+        )
+    ])
+
+    await query.message.reply_text(
+        "🗑 حذف آهنگ\n\n"
+        "آهنگ موردنظر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
+
+# ============================================================
+# Delete Music
+# ============================================================
+
+async def music_delete_item(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    if query.from_user.id != ADMIN_ID:
+
+        await query.message.reply_text(
+            "⛔ شما دسترسی به این بخش را ندارید."
+        )
+
+        return
+
+    try:
+
+        music_id = int(
+            query.data.replace(
+                "music_delete_",
+                ""
+            )
+        )
+
+    except ValueError:
+
+        return
+
+    item = get_music_by_id(
+        music_id
+    )
+
+    if not item:
+
+        await query.message.reply_text(
+            "❌ این آهنگ پیدا نشد."
+        )
+
+        return
+
+    (
+        item_id,
+        title,
+        artist,
+        poster_file_id,
+        download_url
+    ) = item
+
+    delete_music(
+        music_id
+    )
+
+    await query.message.reply_text(
+        "✅ آهنگ حذف شد.\n\n"
+        f"🎤 خواننده: {artist or 'نامشخص'}\n"
+        f"🎼 عنوان: {title}",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🗑 حذف آهنگ دیگر",
+                    callback_data="music_delete"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🎵 مدیریت موسیقی",
+                    callback_data="music_admin"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 منوی اصلی",
+                    callback_data="main_menu"
+                )
+            ]
+        ])
+    )
+
+
+# ============================================================
 # Latest News
-# =========================
+# ============================================================
 
 async def latest_news(
     update: Update,
@@ -1754,7 +2362,8 @@ async def latest_news(
     if not news_list:
 
         await query.message.reply_text(
-            "📰 هنوز خبری دریافت نشده است."
+            "📰 هنوز خبری دریافت نشده است.",
+            reply_markup=get_back_menu_keyboard()
         )
 
         return
@@ -1797,9 +2406,9 @@ async def latest_news(
         )
 
 
-# =========================
+# ============================================================
 # Movie Section
-# =========================
+# ============================================================
 
 async def movies(
     update: Update,
@@ -1819,7 +2428,9 @@ async def movies(
         f"MOVIES BUTTON CLICKED BY USER: {user_id}"
     )
 
-    user = get_user(user_id)
+    user = get_user(
+        user_id
+    )
 
     if not user:
         return
@@ -1867,9 +2478,11 @@ async def show_movie_page(
 ):
 
     if index < 0:
+
         index = len(contents) - 1
 
     if index >= len(contents):
+
         index = 0
 
     (
@@ -1904,12 +2517,12 @@ async def show_movie_page(
         ],
         [
             InlineKeyboardButton(
-                "بعدی ◀️",
-                callback_data=f"movie_page_{index + 1}"
+                "◀️ قبلی",
+                callback_data=f"movie_page_{index - 1}"
             ),
             InlineKeyboardButton(
-                "▶️ قبلی",
-                callback_data=f"movie_page_{index - 1}"
+                "بعدی ▶️",
+                callback_data=f"movie_page_{index + 1}"
             )
         ],
         [
@@ -1999,9 +2612,11 @@ async def movie_page(
         return
 
     if index < 0:
+
         index = len(contents) - 1
 
     if index >= len(contents):
+
         index = 0
 
     (
@@ -2036,12 +2651,12 @@ async def movie_page(
         ],
         [
             InlineKeyboardButton(
-                "بعدی ◀️",
-                callback_data=f"movie_page_{index + 1}"
+                "◀️ قبلی",
+                callback_data=f"movie_page_{index - 1}"
             ),
             InlineKeyboardButton(
-                "▶️ قبلی",
-                callback_data=f"movie_page_{index - 1}"
+                "بعدی ▶️",
+                callback_data=f"movie_page_{index + 1}"
             )
         ],
         [
@@ -2095,9 +2710,9 @@ async def movie_page(
         )
 
 
-# =========================
+# ============================================================
 # Movie Request
-# =========================
+# ============================================================
 
 async def movie_request(
     update: Update,
@@ -2218,9 +2833,9 @@ async def receive_movie_request(
         )
 
 
-# =========================
-# Invite Button
-# =========================
+# ============================================================
+# Invite
+# ============================================================
 
 async def invite_friends(
     update: Update,
@@ -2232,6 +2847,7 @@ async def invite_friends(
     try:
         await query.answer()
     except BadRequest as e:
+
         print(
             "Old/invalid callback query in invite:",
             e
@@ -2239,7 +2855,9 @@ async def invite_friends(
 
     user_id = query.from_user.id
 
-    user = get_user(user_id)
+    user = get_user(
+        user_id
+    )
 
     if not user:
         return
@@ -2259,24 +2877,19 @@ async def invite_friends(
     )
 
     await query.message.reply_text(
-
         "👥 دعوت دوستان\n\n"
-
         f"تعداد دعوت‌های موفق شما: {count} از 5\n\n"
-
         "لینک اختصاصی شما:\n"
         f"{invite_link}\n\n"
-
         "📌 این لینک را برای دوستانتان ارسال کنید.\n"
         "دوست شما باید از طریق همین لینک وارد ربات شود "
         "و Start را بزند تا دعوت ثبت شود."
-
     )
 
 
-# =========================
+# ============================================================
 # Check Referrals
-# =========================
+# ============================================================
 
 async def check_referrals(
     update: Update,
@@ -2288,6 +2901,7 @@ async def check_referrals(
     try:
         await query.answer()
     except BadRequest as e:
+
         print(
             "Old/invalid callback query in check:",
             e
@@ -2295,7 +2909,9 @@ async def check_referrals(
 
     user_id = query.from_user.id
 
-    user = get_user(user_id)
+    user = get_user(
+        user_id
+    )
 
     if not user:
         return
@@ -2309,11 +2925,9 @@ async def check_referrals(
     if verified:
 
         await query.message.reply_text(
-
             "🎉 دسترسی شما فعال است!\n\n"
             f"👥 دعوت‌های موفق: {count} از 5\n\n"
             "✅ اکنون می‌توانید فیلم و سریال‌ها را دریافت کنید."
-
         )
 
         return
@@ -2321,21 +2935,17 @@ async def check_referrals(
     remaining = 5 - count
 
     await query.message.reply_text(
-
         "📊 وضعیت دعوت‌ها\n\n"
-
         f"👥 دعوت‌های موفق: {count} از 5\n"
         f"⏳ تعداد باقی‌مانده: {remaining}\n\n"
-
         "بعد از تکمیل ۵ دعوت، "
         "دسترسی دانلود فیلم و سریال فعال می‌شود."
-
     )
 
 
-# =========================
-# Content Button
-# =========================
+# ============================================================
+# Content Download
+# ============================================================
 
 async def send_content(
     update: Update,
@@ -2347,6 +2957,7 @@ async def send_content(
     try:
         await query.answer()
     except BadRequest as e:
+
         print(
             "Old/invalid callback query in content:",
             e
@@ -2354,7 +2965,9 @@ async def send_content(
 
     user_id = query.from_user.id
 
-    user = get_user(user_id)
+    user = get_user(
+        user_id
+    )
 
     if not user or not user[2]:
 
@@ -2383,16 +2996,11 @@ async def send_content(
         ]
 
         await query.message.reply_text(
-
             "🔒 دانلود این فیلم هنوز فعال نیست.\n\n"
-
             f"👥 دعوت‌های موفق شما: {count} از 5\n\n"
-
             "برای فعال شدن دانلود همه فیلم‌ها، "
             "۵ نفر را با لینک اختصاصی خود دعوت کنید:\n\n"
-
             f"{invite_link}",
-
             reply_markup=InlineKeyboardMarkup(
                 keyboard
             )
@@ -2422,13 +3030,9 @@ async def send_content(
             return
 
         await context.bot.copy_message(
-
             chat_id=user_id,
-
             from_chat_id=CONTENT_CHANNEL_ID,
-
             message_id=message_id
-
         )
 
     except Exception as e:
@@ -2443,9 +3047,9 @@ async def send_content(
         )
 
 
-# =========================
+# ============================================================
 # Channel New Content
-# =========================
+# ============================================================
 
 async def channel_post(
     update: Update,
@@ -2477,9 +3081,11 @@ async def channel_post(
     text = ""
 
     if message.caption:
+
         text = message.caption
 
     elif message.text:
+
         text = message.text
 
     if text:
@@ -2552,12 +3158,19 @@ async def channel_post(
 
                 text_after = (
                     line
-                    .replace("خلاصه داستان:", "")
-                    .replace("خلاصه داستان :", "")
+                    .replace(
+                        "خلاصه داستان:",
+                        ""
+                    )
+                    .replace(
+                        "خلاصه داستان :",
+                        ""
+                    )
                     .strip()
                 )
 
                 if text_after:
+
                     summary_lines.append(
                         text_after
                     )
@@ -2601,9 +3214,9 @@ async def channel_post(
     )
 
 
-# =========================
+# ============================================================
 # Error Handler
-# =========================
+# ============================================================
 
 async def error_handler(
     update: object,
@@ -2635,9 +3248,9 @@ async def error_handler(
     )
 
 
-# =========================
+# ============================================================
 # Main
-# =========================
+# ============================================================
 
 def main():
 
@@ -2682,9 +3295,9 @@ def main():
 
     bot_app = app
 
-    # =========================
+    # ========================================================
     # Commands
-    # =========================
+    # ========================================================
 
     app.add_handler(
         CommandHandler(
@@ -2700,9 +3313,9 @@ def main():
         )
     )
 
-    # =========================
-    # Music Admin Callbacks
-    # =========================
+    # ========================================================
+    # Music Admin
+    # ========================================================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -2715,6 +3328,13 @@ def main():
         CallbackQueryHandler(
             music_add,
             pattern="^music_add$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            admin_back,
+            pattern="^admin_back$"
         )
     )
 
@@ -2739,9 +3359,41 @@ def main():
         )
     )
 
-    # =========================
-    # Movie Callbacks
-    # =========================
+    app.add_handler(
+        CallbackQueryHandler(
+            music_delete,
+            pattern="^music_delete$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            music_delete_item,
+            pattern="^music_delete_[0-9]+$"
+        )
+    )
+
+    # ========================================================
+    # Music User
+    # ========================================================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            music,
+            pattern="^music$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            music_page,
+            pattern="^music_page_-?[0-9]+$"
+        )
+    )
+
+    # ========================================================
+    # Movies
+    # ========================================================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -2764,9 +3416,9 @@ def main():
         )
     )
 
-    # =========================
+    # ========================================================
     # News
-    # =========================
+    # ========================================================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -2777,21 +3429,25 @@ def main():
 
     app.add_handler(
         CallbackQueryHandler(
-            main_menu,
-            pattern="^main_menu$"
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
             news_menu,
             pattern="^news_menu$"
         )
     )
 
-    # =========================
+    # ========================================================
+    # Main Menu
+    # ========================================================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            main_menu,
+            pattern="^main_menu$"
+        )
+    )
+
+    # ========================================================
     # Notifications
-    # =========================
+    # ========================================================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -2814,9 +3470,9 @@ def main():
         )
     )
 
-    # =========================
+    # ========================================================
     # Coming Soon
-    # =========================
+    # ========================================================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -2825,9 +3481,9 @@ def main():
         )
     )
 
-    # =========================
+    # ========================================================
     # Referral
-    # =========================
+    # ========================================================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -2843,9 +3499,9 @@ def main():
         )
     )
 
-    # =========================
-    # Content
-    # =========================
+    # ========================================================
+    # Movie Download
+    # ========================================================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -2854,9 +3510,9 @@ def main():
         )
     )
 
-    # =========================
+    # ========================================================
     # Music Poster
-    # =========================
+    # ========================================================
 
     app.add_handler(
         MessageHandler(
@@ -2865,9 +3521,9 @@ def main():
         )
     )
 
-    # =========================
-    # Music URL / Edit Info
-    # =========================
+    # ========================================================
+    # Music URL / Music Edit
+    # ========================================================
 
     app.add_handler(
         MessageHandler(
@@ -2876,9 +3532,9 @@ def main():
         )
     )
 
-    # =========================
+    # ========================================================
     # Movie Request Text
-    # =========================
+    # ========================================================
 
     app.add_handler(
         MessageHandler(
@@ -2887,9 +3543,9 @@ def main():
         )
     )
 
-    # =========================
+    # ========================================================
     # Channel Posts
-    # =========================
+    # ========================================================
 
     app.add_handler(
         MessageHandler(
@@ -2899,9 +3555,9 @@ def main():
         )
     )
 
-    # =========================
+    # ========================================================
     # Error Handler
-    # =========================
+    # ========================================================
 
     app.add_error_handler(
         error_handler
@@ -2920,5 +3576,10 @@ def main():
     )
 
 
+# ============================================================
+# Run
+# ============================================================
+
 if __name__ == "__main__":
+
     main()
