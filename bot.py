@@ -1041,6 +1041,7 @@ async def music_add(
         "لطفاً پوستر آهنگ را به صورت عکس ارسال کنید."
     )
 
+
 async def receive_music_poster(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -1067,6 +1068,94 @@ async def receive_music_poster(
         "✅ پوستر دریافت شد.\n\n"
         "حالا لینک مستقیم فایل MP3 را ارسال کنید."
     )
+
+
+async def receive_music_url(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user = update.effective_user
+
+    if not user or user.id != ADMIN_ID:
+        return
+
+    if user.id not in pending_music_add:
+        return
+
+    if not update.message or not update.message.text:
+        return
+
+    url = update.message.text.strip()
+
+    if not (
+        url.startswith("http://")
+        or url.startswith("https://")
+    ):
+        await update.message.reply_text(
+            "❌ لینک معتبر نیست.\n\n"
+            "لطفاً لینک مستقیم فایل MP3 را ارسال کنید."
+        )
+        return
+
+    if not url.lower().split("?")[0].endswith(".mp3"):
+        await update.message.reply_text(
+            "❌ این لینک به نظر فایل MP3 نیست.\n\n"
+            "لطفاً لینک مستقیم فایل MP3 را ارسال کنید."
+        )
+        return
+
+    from urllib.parse import unquote, urlparse
+
+    filename = unquote(
+        os.path.basename(
+            urlparse(url).path
+        )
+    )
+
+    if filename.lower().endswith(".mp3"):
+        filename = filename[:-4]
+
+    filename = filename.replace(
+        "(Remiixbaz.com)",
+        ""
+    )
+
+    filename = filename.replace(
+        "(320)",
+        ""
+    )
+
+    filename = filename.strip()
+
+    if " - " in filename:
+
+        artist, title = filename.split(
+            " - ",
+            1
+        )
+
+        artist = artist.strip()
+        title = title.strip()
+
+    else:
+
+        artist = ""
+        title = filename
+
+    pending_music_add[user.id].update({
+        "download_url": url,
+        "artist": artist,
+        "title": title
+    })
+
+    await update.message.reply_text(
+        "🎵 اطلاعات آهنگ دریافت شد.\n\n"
+        f"🎤 خواننده: {artist or 'نامشخص'}\n"
+        f"🎼 عنوان: {title or 'نامشخص'}\n\n"
+        "لطفاً بررسی کنید."
+    )
+
 
 async def latest_news(
     update: Update,
@@ -1125,7 +1214,6 @@ async def latest_news(
         await query.message.reply_text(
             caption
         )
-
 
 # =========================
 # Movie Section
@@ -1982,6 +2070,13 @@ def main():
         MessageHandler(
             filters.PHOTO,
             receive_music_poster
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            receive_music_url
         )
     )
     
