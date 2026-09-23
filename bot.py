@@ -122,6 +122,16 @@ def init_database():
                 )
             """)
 
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS music (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT,
+                    artist TEXT,
+                    poster_file_id TEXT,
+                    download_url TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS news (
@@ -420,6 +430,79 @@ def get_contents():
 
             return cur.fetchall()
 
+def save_music(title, artist, poster_file_id, download_url):
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                INSERT INTO music (
+                    title,
+                    artist,
+                    poster_file_id,
+                    download_url
+                )
+                VALUES (%s, %s, %s, %s)
+            """, (
+                title,
+                artist,
+                poster_file_id,
+                download_url
+            ))
+
+        conn.commit()
+
+
+def get_music():
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                SELECT
+                    id,
+                    title,
+                    artist,
+                    poster_file_id,
+                    download_url
+                FROM music
+                ORDER BY id DESC
+                LIMIT 50
+            """)
+
+            return cur.fetchall()
+
+
+def delete_music(music_id):
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                DELETE FROM music
+                WHERE id = %s
+            """, (music_id,))
+
+        conn.commit()
+
+
+def get_music_by_id(music_id):
+
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("""
+                SELECT
+                    id,
+                    title,
+                    artist,
+                    poster_file_id,
+                    download_url
+                FROM music
+                WHERE id = %s
+            """, (music_id,))
+
+        return cur.fetchone()
 
 def clear_contents():
 
