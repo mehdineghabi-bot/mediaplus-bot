@@ -1681,8 +1681,6 @@ async def receive_music_url(
         data["title"] = title
         data["editing"] = False
 
-        # لینک قبلی حفظ می‌شود و دوباره نمایش داده می‌شود
-
         await update.message.reply_text(
             build_music_info_text(data),
             reply_markup=get_music_confirm_keyboard()
@@ -1900,11 +1898,37 @@ async def music_confirm_add(
             None
         )
 
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🔗 باز کردن لینک اصلی",
+                    url=download_url
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🎵 مدیریت موسیقی",
+                    callback_data="music_admin"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 منوی اصلی",
+                    callback_data="main_menu"
+                )
+            ]
+        ]
+
         await query.message.reply_text(
             "✅ آهنگ با موفقیت ذخیره شد.\n\n"
             f"🎤 خواننده: {artist or 'نامشخص'}\n"
             f"🎼 عنوان: {title}\n\n"
-            "🎵 آهنگ به بخش موسیقی اضافه شد."
+            "🔗 لینک اصلی آهنگ:\n"
+            f"{download_url}\n\n"
+            "🎵 آهنگ به بخش موسیقی اضافه شد.",
+            reply_markup=InlineKeyboardMarkup(
+                keyboard
+            )
         )
 
     except Exception as e:
@@ -2027,11 +2051,9 @@ async def show_music_page(
         return
 
     if index < 0:
-
         index = len(music_list) - 1
 
     if index >= len(music_list):
-
         index = 0
 
     (
@@ -2052,14 +2074,14 @@ async def show_music_page(
     keyboard = [
         [
             InlineKeyboardButton(
-                "🎧 گوش دادن",
-                url=download_url
+                "🎧 پخش آهنگ",
+                callback_data=f"music_play_{music_id}"
             )
         ],
         [
             InlineKeyboardButton(
                 "⬇️ دانلود آهنگ",
-                url=download_url
+                callback_data=f"music_download_{music_id}"
             )
         ],
         [
@@ -2110,6 +2132,176 @@ async def show_music_page(
 
 
 # ============================================================
+# Play Music
+# ============================================================
+
+async def play_music(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer(
+            "🎵 در حال آماده‌سازی آهنگ..."
+        )
+    except BadRequest:
+        pass
+
+    try:
+
+        music_id = int(
+            query.data.replace(
+                "music_play_",
+                ""
+            )
+        )
+
+    except ValueError:
+
+        await query.message.reply_text(
+            "❌ آهنگ پیدا نشد."
+        )
+
+        return
+
+    item = get_music_by_id(
+        music_id
+    )
+
+    if not item:
+
+        await query.message.reply_text(
+            "❌ این آهنگ دیگر موجود نیست."
+        )
+
+        return
+
+    (
+        item_id,
+        title,
+        artist,
+        poster_file_id,
+        download_url
+    ) = item
+
+    try:
+
+        await context.bot.send_audio(
+            chat_id=query.from_user.id,
+            audio=download_url,
+            title=title or "بدون عنوان",
+            performer=artist or "نامشخص",
+            caption=(
+                f"🎵 {title or 'بدون عنوان'}\n"
+                f"🎤 {artist or 'نامشخص'}"
+            )
+        )
+
+    except Exception as e:
+
+        print(
+            "Music play error:",
+            e
+        )
+
+        await query.message.reply_text(
+            "❌ پخش آهنگ انجام نشد.\n\n"
+            "ممکن است لینک MP3 مستقیم نباشد، "
+            "فایل در دسترس نباشد یا حجم فایل بیش از "
+            "محدودیت تلگرام باشد."
+        )
+
+
+# ============================================================
+# Download Music
+# ============================================================
+
+async def download_music(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer(
+            "⬇️ در حال ارسال فایل..."
+        )
+    except BadRequest:
+        pass
+
+    try:
+
+        music_id = int(
+            query.data.replace(
+                "music_download_",
+                ""
+            )
+        )
+
+    except ValueError:
+
+        await query.message.reply_text(
+            "❌ آهنگ پیدا نشد."
+        )
+
+        return
+
+    item = get_music_by_id(
+        music_id
+    )
+
+    if not item:
+
+        await query.message.reply_text(
+            "❌ این آهنگ دیگر موجود نیست."
+        )
+
+        return
+
+    (
+        item_id,
+        title,
+        artist,
+        poster_file_id,
+        download_url
+    ) = item
+
+    try:
+
+        filename = (
+            f"{artist + ' - ' if artist else ''}"
+            f"{title or 'music'}.mp3"
+        )
+
+        await context.bot.send_document(
+            chat_id=query.from_user.id,
+            document=download_url,
+            filename=filename,
+            caption=(
+                f"⬇️ {title or 'بدون عنوان'}\n"
+                f"🎤 {artist or 'نامشخص'}"
+            )
+        )
+
+    except Exception as e:
+
+        print(
+            "Music download error:",
+            e
+        )
+
+        await query.message.reply_text(
+            "❌ دانلود آهنگ انجام نشد.\n\n"
+            "ممکن است لینک MP3 مستقیم نباشد، "
+            "فایل در دسترس نباشد یا حجم فایل بیش از "
+            "محدودیت تلگرام باشد."
+        )
+
+
+# ============================================================
 # Music Page
 # ============================================================
 
@@ -2150,11 +2342,9 @@ async def music_page(
         return
 
     if index < 0:
-
         index = len(music_list) - 1
 
     if index >= len(music_list):
-
         index = 0
 
     try:
@@ -3215,6 +3405,48 @@ async def channel_post(
 
 
 # ============================================================
+# Text Router
+# ============================================================
+
+async def receive_text_router(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    # --------------------------------------------------------
+    # Admin is adding/editing music
+    # --------------------------------------------------------
+
+    if (
+        user.id == ADMIN_ID
+        and user.id in pending_music_add
+    ):
+
+        await receive_music_url(
+            update,
+            context
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # User has requested a movie
+    # --------------------------------------------------------
+
+    if user.id in pending_movie_requests:
+
+        await receive_movie_request(
+            update,
+            context
+        )
+
+
+# ============================================================
 # Error Handler
 # ============================================================
 
@@ -3314,7 +3546,7 @@ def main():
     )
 
     # ========================================================
-    # Music Admin
+    # Admin Music
     # ========================================================
 
     app.add_handler(
@@ -3388,6 +3620,20 @@ def main():
         CallbackQueryHandler(
             music_page,
             pattern="^music_page_-?[0-9]+$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            play_music,
+            pattern="^music_play_[0-9]+$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            download_music,
+            pattern="^music_download_[0-9]+$"
         )
     )
 
@@ -3511,6 +3757,22 @@ def main():
     )
 
     # ========================================================
+    # Channel Posts
+    #
+    # IMPORTANT:
+    # This must be registered before generic PHOTO/TEXT
+    # handlers so channel posts are not consumed by them.
+    # ========================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Chat(CONTENT_CHANNEL_ID)
+            & filters.UpdateType.CHANNEL_POST,
+            channel_post
+        )
+    )
+
+    # ========================================================
     # Music Poster
     # ========================================================
 
@@ -3522,36 +3784,13 @@ def main():
     )
 
     # ========================================================
-    # Music URL / Music Edit
+    # Text Router
     # ========================================================
 
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
-            receive_music_url
-        )
-    )
-
-    # ========================================================
-    # Movie Request Text
-    # ========================================================
-
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            receive_movie_request
-        )
-    )
-
-    # ========================================================
-    # Channel Posts
-    # ========================================================
-
-    app.add_handler(
-        MessageHandler(
-            filters.Chat(CONTENT_CHANNEL_ID)
-            & filters.UpdateType.CHANNEL_POST,
-            channel_post
+            receive_text_router
         )
     )
 
