@@ -970,6 +970,50 @@ async def admin_panel(
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+async def music_admin(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    if query.from_user.id != ADMIN_ID:
+        await query.message.reply_text(
+            "⛔ شما دسترسی به این بخش را ندارید."
+        )
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "➕ افزودن آهنگ",
+                callback_data="music_add"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🗑 حذف آهنگ",
+                callback_data="music_delete"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 پنل مدیریت",
+                callback_data="admin_back"
+            )
+        ]
+    ]
+
+    await query.message.reply_text(
+        "🎵 مدیریت موسیقی\n\n"
+        "لطفاً عملیات موردنظر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def latest_news(
     update: Update,
@@ -1802,6 +1846,13 @@ def main():
         CommandHandler(
             "admin",
             admin_panel
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            music_admin,
+            pattern="^music_admin$"
         )
     )
     
