@@ -936,6 +936,40 @@ async def coming_soon(
         reply_markup=get_back_menu_keyboard()
     )
 
+async def admin_panel(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user = update.effective_user
+
+    if not user or user.id != ADMIN_ID:
+        await update.message.reply_text(
+            "⛔ شما دسترسی به پنل مدیریت ندارید."
+        )
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎵 مدیریت موسیقی",
+                callback_data="music_admin"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 منوی اصلی",
+                callback_data="main_menu"
+            )
+        ]
+    ]
+
+    await update.message.reply_text(
+        "⚙️ پنل مدیریت مدیا پلاس\n\n"
+        "لطفاً بخش موردنظر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 async def latest_news(
     update: Update,
@@ -1764,6 +1798,13 @@ def main():
         )
     )
 
+    app.add_handler(
+        CommandHandler(
+            "admin",
+            admin_panel
+        )
+    )
+    
     app.add_handler(
         CallbackQueryHandler(
             movies,
