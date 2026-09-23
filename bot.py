@@ -43,6 +43,7 @@ ADMIN_ID = 8093676883
 
 # کاربرانی که در انتظار ارسال عنوان فیلم درخواستی هستند
 pending_movie_requests = set()
+pending_music_add = {}
 
 # A private chat/channel used only to upload news photos through Bot API.
 # Set this Render environment variable to a chat/channel where the bot has
@@ -1033,11 +1034,40 @@ async def music_add(
         )
         return
 
+    pending_music_add[query.from_user.id] = {}
+
     await query.message.reply_text(
         "➕ افزودن آهنگ\n\n"
         "لطفاً پوستر آهنگ را به صورت عکس ارسال کنید."
     )
-    
+
+async def receive_music_poster(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user = update.effective_user
+
+    if not user or user.id != ADMIN_ID:
+        return
+
+    if user.id not in pending_music_add:
+        return
+
+    if not update.message or not update.message.photo:
+        return
+
+    photo = update.message.photo[-1]
+
+    pending_music_add[user.id] = {
+        "poster_file_id": photo.file_id
+    }
+
+    await update.message.reply_text(
+        "✅ پوستر دریافت شد.\n\n"
+        "حالا لینک مستقیم فایل MP3 را ارسال کنید."
+    )
+
 async def latest_news(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -1948,6 +1978,13 @@ def main():
         )
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO,
+            receive_music_poster
+        )
+    )
+    
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
