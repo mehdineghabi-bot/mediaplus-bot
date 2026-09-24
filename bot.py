@@ -11,7 +11,8 @@ from telethon.sessions import StringSession
 from telegram import (
     Update,
     InlineKeyboardButton,
-    InlineKeyboardMarkup
+    InlineKeyboardMarkup,
+    InputMediaPhoto
 )
 
 from telegram.error import BadRequest
@@ -67,6 +68,18 @@ ADMIN_ID = 8093676883
 pending_movie_requests = set()
 
 pending_music_add = {}
+
+
+# ============================================================
+# Movie Gallery State
+# ============================================================
+
+# تعداد پوسترهایی که در هر گالری نمایش داده می‌شود
+MOVIE_GALLERY_PAGE_SIZE = 9
+
+# پیام‌های گالری هر کاربر
+# برای پاک کردن گالری قبلی هنگام جابه‌جایی بین صفحات
+movie_gallery_messages = {}
 
 
 # ============================================================
@@ -1076,6 +1089,12 @@ async def main_menu(
         await query.answer()
     except BadRequest:
         pass
+
+    # پاک کردن گالری قبلی در صورت وجود
+    await clear_movie_gallery(
+        context.bot,
+        query.from_user.id
+    )
 
     keyboard = get_main_keyboard()
 
@@ -2597,6 +2616,250 @@ async def latest_news(
 
 
 # ============================================================
+# Movie Gallery Helpers
+# ============================================================
+
+async def clear_movie_gallery(
+    bot,
+    user_id
+):
+
+    message_ids = movie_gallery_messages.pop(
+        user_id,
+        []
+    )
+
+    if not message_ids:
+        return
+
+    for message_id in message_ids:
+
+        try:
+
+            await bot.delete_message(
+                chat_id=user_id,
+                message_id=message_id
+            )
+
+        except Exception:
+            pass
+
+
+async def show_movie_gallery(
+    bot,
+    chat_id,
+    contents,
+    page=0
+):
+
+    if not contents:
+
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "🎬 بخش فیلم و سریال\n\n"
+                "هنوز محتوایی اضافه نشده است."
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🎥 فیلم درخواستی",
+                        callback_data="movie_request"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🏠 منوی اصلی",
+                        callback_data="main_menu"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    total_pages = (
+        len(contents)
+        + MOVIE_GALLERY_PAGE_SIZE
+        - 1
+    ) // MOVIE_GALLERY_PAGE_SIZE
+
+    if page < 0:
+        page = total_pages - 1
+
+    if page >= total_pages:
+        page = 0
+
+    start_index = (
+        page * MOVIE_GALLERY_PAGE_SIZE
+    )
+
+    end_index = (
+        start_index
+        + MOVIE_GALLERY_PAGE_SIZE
+    )
+
+    page_contents = contents[
+        start_index:end_index
+    ]
+
+    media = []
+
+    for item in page_contents:
+
+        (
+            content_id,
+            message_id,
+            title,
+            year,
+            genre,
+            rating,
+            duration,
+            description,
+            poster_file_id
+        ) = item
+
+        if poster_file_id:
+
+            media.append(
+                InputMediaPhoto(
+                    media=poster_file_id
+                )
+            )
+
+    sent_gallery_messages = []
+
+    # --------------------------------------------------------
+    # Send poster gallery
+    # --------------------------------------------------------
+
+    if media:
+
+        try:
+
+            sent_gallery_messages = (
+                await bot.send_media_group(
+                    chat_id=chat_id,
+                    media=media
+                )
+            )
+
+        except Exception as e:
+
+            print(
+                "Movie gallery error:",
+                e
+            )
+
+            sent_gallery_messages = []
+
+    # --------------------------------------------------------
+    # Movie selection buttons
+    # --------------------------------------------------------
+
+    keyboard = []
+
+    for offset, item in enumerate(
+        page_contents
+    ):
+
+        (
+            content_id,
+            message_id,
+            title,
+            year,
+            genre,
+            rating,
+            duration,
+            description,
+            poster_file_id
+        ) = item
+
+        number = (
+            start_index
+            + offset
+            + 1
+        )
+
+        label = (
+            f"{number}. 🎬 "
+            f"{title or 'بدون عنوان'}"
+        )
+
+        keyboard.append([
+            InlineKeyboardButton(
+                label[:60],
+                callback_data=f"movie_select_{content_id}"
+            )
+        ])
+
+    # --------------------------------------------------------
+    # Gallery navigation
+    # --------------------------------------------------------
+
+    navigation_buttons = []
+
+    if total_pages > 1:
+
+        navigation_buttons = [
+            InlineKeyboardButton(
+                "بعدی",
+                callback_data=f"movie_gallery_page_{page + 1}"
+            ),
+            InlineKeyboardButton(
+                "قبلی",
+                callback_data=f"movie_gallery_page_{page - 1}"
+            )
+        ]
+
+        keyboard.append(
+            navigation_buttons
+        )
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "🎥 فیلم درخواستی",
+            callback_data="movie_request"
+        )
+    ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "🏠 منوی اصلی",
+            callback_data="main_menu"
+        )
+    ])
+
+    gallery_text = (
+        "🎬 فیلم و سریال\n\n"
+        "فیلم موردنظر خود را انتخاب کنید 👇\n\n"
+        f"📄 صفحه {page + 1} از {total_pages}\n"
+        f"🎞 تعداد فیلم‌ها: {len(contents)}"
+    )
+
+    control_message = await bot.send_message(
+        chat_id=chat_id,
+        text=gallery_text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
+    all_message_ids = [
+        message.message_id
+        for message in sent_gallery_messages
+    ]
+
+    all_message_ids.append(
+        control_message.message_id
+    )
+
+    movie_gallery_messages[
+        chat_id
+    ] = all_message_ids
+
+
+# ============================================================
 # Movie Section
 # ============================================================
 
@@ -2627,42 +2890,169 @@ async def movies(
 
     contents = get_contents()
 
-    if not contents:
+    # پاک کردن گالری قبلی
+    await clear_movie_gallery(
+        context.bot,
+        user_id
+    )
 
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "🎥 فیلم درخواستی",
-                    callback_data="movie_request"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 منوی اصلی",
-                    callback_data="main_menu"
-                )
-            ]
-        ]
-
-        await query.message.reply_text(
-            "🎬 بخش فیلم و سریال\n\n"
-            "هنوز محتوایی اضافه نشده است.",
-            reply_markup=InlineKeyboardMarkup(
-                keyboard
-            )
-        )
-
-        return
-
-    await show_movie_page(
-        query.message,
+    await show_movie_gallery(
+        context.bot,
+        query.message.chat_id,
         contents,
         0
     )
 
 
+# ============================================================
+# Movie Gallery Page
+# ============================================================
+
+async def movie_gallery_page(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    try:
+
+        page = int(
+            query.data.replace(
+                "movie_gallery_page_",
+                ""
+            )
+        )
+
+    except ValueError:
+
+        return
+
+    contents = get_contents()
+
+    if not contents:
+
+        await clear_movie_gallery(
+            context.bot,
+            query.from_user.id
+        )
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=(
+                "🎬 محتوایی برای نمایش وجود ندارد."
+            ),
+            reply_markup=get_back_menu_keyboard()
+        )
+
+        return
+
+    await clear_movie_gallery(
+        context.bot,
+        query.from_user.id
+    )
+
+    await show_movie_gallery(
+        context.bot,
+        query.message.chat_id,
+        contents,
+        page
+    )
+
+
+# ============================================================
+# Movie Selection
+# ============================================================
+
+async def movie_select(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+        await query.answer()
+    except BadRequest:
+        pass
+
+    try:
+
+        content_id = int(
+            query.data.replace(
+                "movie_select_",
+                ""
+            )
+        )
+
+    except ValueError:
+
+        await query.message.reply_text(
+            "❌ فیلم پیدا نشد."
+        )
+
+        return
+
+    contents = get_contents()
+
+    if not contents:
+
+        await clear_movie_gallery(
+            context.bot,
+            query.from_user.id
+        )
+
+        await query.message.reply_text(
+            "❌ فیلمی برای نمایش وجود ندارد.",
+            reply_markup=get_back_menu_keyboard()
+        )
+
+        return
+
+    selected_index = None
+
+    for index, item in enumerate(contents):
+
+        if item[0] == content_id:
+
+            selected_index = index
+
+            break
+
+    if selected_index is None:
+
+        await query.message.reply_text(
+            "❌ این فیلم دیگر موجود نیست.",
+            reply_markup=get_back_menu_keyboard()
+        )
+
+        return
+
+    await clear_movie_gallery(
+        context.bot,
+        query.from_user.id
+    )
+
+    await show_movie_page(
+        context.bot,
+        query.message.chat_id,
+        contents,
+        selected_index
+    )
+
+
+# ============================================================
+# Show Movie Page
+# ============================================================
+
 async def show_movie_page(
-    message,
+    bot,
+    chat_id,
     contents,
     index
 ):
@@ -2737,26 +3127,29 @@ async def show_movie_page(
 
         try:
 
-            await message.reply_photo(
+            await bot.send_photo(
+                chat_id=chat_id,
                 photo=poster_file_id,
                 caption=caption,
                 reply_markup=markup
             )
 
+            return
+
         except BadRequest:
 
-            await message.reply_text(
-                caption,
-                reply_markup=markup
-            )
+            pass
 
-    else:
+    await bot.send_message(
+        chat_id=chat_id,
+        text=caption,
+        reply_markup=markup
+    )
 
-        await message.reply_text(
-            caption,
-            reply_markup=markup
-        )
 
+# ============================================================
+# Movie Page
+# ============================================================
 
 async def movie_page(
     update: Update,
@@ -2787,8 +3180,16 @@ async def movie_page(
 
     if not contents:
 
-        await query.message.reply_text(
-            "🎬 محتوایی برای نمایش وجود ندارد.",
+        await clear_movie_gallery(
+            context.bot,
+            query.from_user.id
+        )
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=(
+                "🎬 محتوایی برای نمایش وجود ندارد."
+            ),
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
@@ -2809,64 +3210,6 @@ async def movie_page(
 
         index = 0
 
-    (
-        content_id,
-        message_id,
-        title,
-        year,
-        genre,
-        rating,
-        duration,
-        description,
-        poster_file_id
-    ) = contents[index]
-
-    caption = (
-        f"🎬 {title}\n\n"
-        f"📅 سال: {year or 'نامشخص'}\n"
-        f"🎭 ژانر: {genre or 'نامشخص'}\n"
-        f"⭐ امتیاز: {rating or 'نامشخص'}\n"
-        f"⏱ مدت: {duration or 'نامشخص'}\n\n"
-        f"📝 خلاصه:\n"
-        f"{description or 'بدون توضیحات'}\n\n"
-        f"📄 صفحه {index + 1} از {len(contents)}"
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "⬇️ دانلود",
-                callback_data=f"content_{content_id}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "بعدی",
-                callback_data=f"movie_page_{index + 1}"
-            ),
-            InlineKeyboardButton(
-                "قبلی",
-                callback_data=f"movie_page_{index - 1}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🎥 فیلم درخواستی",
-                callback_data="movie_request"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 منوی اصلی",
-                callback_data="main_menu"
-            )
-        ]
-    ]
-
-    markup = InlineKeyboardMarkup(
-        keyboard
-    )
-
     try:
 
         await query.message.delete()
@@ -2875,29 +3218,12 @@ async def movie_page(
 
         pass
 
-    if poster_file_id:
-
-        try:
-
-            await query.message.reply_photo(
-                photo=poster_file_id,
-                caption=caption,
-                reply_markup=markup
-            )
-
-        except BadRequest:
-
-            await query.message.reply_text(
-                caption,
-                reply_markup=markup
-            )
-
-    else:
-
-        await query.message.reply_text(
-            caption,
-            reply_markup=markup
-        )
+    await show_movie_page(
+        context.bot,
+        query.message.chat_id,
+        contents,
+        index
+    )
 
 
 # ============================================================
@@ -3645,6 +3971,20 @@ def main():
         CallbackQueryHandler(
             movies,
             pattern="^movies$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            movie_gallery_page,
+            pattern="^movie_gallery_page_-?[0-9]+$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            movie_select,
+            pattern="^movie_select_[0-9]+$"
         )
     )
 
