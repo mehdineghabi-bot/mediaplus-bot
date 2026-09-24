@@ -2086,11 +2086,11 @@ async def show_music_page(
         ],
         [
             InlineKeyboardButton(
-                "◀️ قبلی",
+                "قبلی",
                 callback_data=f"music_page_{index - 1}"
             ),
             InlineKeyboardButton(
-                "بعدی ▶️",
+                "بعدی",
                 callback_data=f"music_page_{index + 1}"
             )
         ],
@@ -2707,11 +2707,11 @@ async def show_movie_page(
         ],
         [
             InlineKeyboardButton(
-                "◀️ قبلی",
+                "قبلی",
                 callback_data=f"movie_page_{index - 1}"
             ),
             InlineKeyboardButton(
-                "بعدی ▶️",
+                "بعدی",
                 callback_data=f"movie_page_{index + 1}"
             )
         ],
@@ -2841,11 +2841,11 @@ async def movie_page(
         ],
         [
             InlineKeyboardButton(
-                "◀️ قبلی",
+                "قبلی",
                 callback_data=f"movie_page_{index - 1}"
             ),
             InlineKeyboardButton(
-                "بعدی ▶️",
+                "بعدی",
                 callback_data=f"movie_page_{index + 1}"
             )
         ],
